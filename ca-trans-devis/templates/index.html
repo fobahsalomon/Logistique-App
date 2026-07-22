@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CA TRANS — Fiche de calcul convoi</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">CA TRANS<span>.</span></div>
+    <div class="subtitle">Fiche de calcul convoi</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel panel-main">
+      <h2>Trajet</h2>
+
+      <div class="row row-2">
+        <div class="field">
+          <label for="origine">Origine</label>
+          <input id="origine" list="liste-lieux" placeholder="Ex : San Pedro" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="destination">Destination</label>
+          <input id="destination" list="liste-lieux" placeholder="Ex : Abidjan" autocomplete="off">
+        </div>
+        <datalist id="liste-lieux"></datalist>
+      </div>
+
+      <button id="btn-resoudre" class="btn btn-primary">Résoudre l'itinéraire</button>
+
+      <div id="statut" class="statut" hidden></div>
+
+      <div id="bloc-manuel" class="field" hidden>
+        <label for="distance-manuelle">Destination introuvable : distance aller simple (km)</label>
+        <div class="row">
+          <input id="distance-manuelle" type="number" min="0" step="1">
+          <button id="btn-distance-manuelle" class="btn">Utiliser cette distance</button>
+        </div>
+      </div>
+
+      <div class="field mode-clic">
+        <span>Point à placer au prochain clic sur la carte :</span>
+        <label><input type="radio" name="mode-clic" value="origine" checked> Origine</label>
+        <label><input type="radio" name="mode-clic" value="destination"> Destination</label>
+      </div>
+
+      <div id="carte" class="carte"></div>
+
+      <div class="row">
+        <button id="btn-itineraire-carte" class="btn" hidden>Calculer l'itinéraire entre ces deux points</button>
+        <button id="btn-enregistrer-trajet" class="btn" hidden>Enregistrer ce trajet dans la base</button>
+      </div>
+    </section>
+
+    <section class="panel panel-side">
+      <h2>Paramètres du voyage</h2>
+
+      <div class="field">
+        <label for="nb-places">Nombre de places souhaitées</label>
+        <input id="nb-places" type="number" min="1" value="63">
+      </div>
+
+      <div class="field">
+        <span>Nombre de jours avec le véhicule</span>
+        <label><input type="radio" name="nb-jours" value="1" checked> 1 jour</label>
+        <label><input type="radio" name="nb-jours" value="2"> 2 jours</label>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label for="conso-100km">Consommation / 100 km (L)</label>
+          <input id="conso-100km" type="number" min="0" value="35">
+        </div>
+        <div class="field">
+          <label for="prix-litre">Prix du litre (F CFA)</label>
+          <input id="prix-litre" type="number" min="0" value="700">
+        </div>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label for="frais-chauffeur">Frais de mission chauffeur (F CFA)</label>
+          <input id="frais-chauffeur" type="number" min="0" value="12000">
+        </div>
+        <div class="field">
+          <label for="frais-convoyeur">Frais de mission convoyeur (F CFA)</label>
+          <input id="frais-convoyeur" type="number" min="0" value="5000">
+        </div>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label for="peage">Péage (F CFA)</label>
+          <input id="peage" type="number" min="0" value="0">
+        </div>
+        <div class="field">
+          <label for="marge-pct">Marge souhaitée (%)</label>
+          <input id="marge-pct" type="number" min="0" value="10">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="remise-montant">Remise (montant en F CFA)</label>
+        <input id="remise-montant" type="number" min="0" value="0">
+      </div>
+
+      <hr>
+
+      <h2>Fiche de devis</h2>
+      <div id="fiche-devis">
+        <p class="muted">Résolvez d'abord un itinéraire pour obtenir la distance.</p>
+      </div>
+    </section>
+  </main>
+
+  <section class="panel panel-full">
+    <details>
+      <summary><h2 class="inline">Base de trajets connus</h2></summary>
+      <input id="filtre-trajets" class="filtre" placeholder="Filtrer (origine ou destination)">
+      <div class="table-wrap">
+        <table id="table-trajets">
+          <thead>
+            <tr>
+              <th>Origine</th>
+              <th>Destination</th>
+              <th>Distance (km)</th>
+              <th>Montant aller</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

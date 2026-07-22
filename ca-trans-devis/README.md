@@ -1,10 +1,13 @@
 # CA TRANS — Fiche de calcul convoi
 
-Application web (Streamlit) qui remplace la recherche manuelle de distance
-sur Google Maps par un calcul d'itinéraire fiable via **OpenRouteService**
+Application web (Flask) qui remplace la recherche manuelle de distance sur
+Google Maps par un calcul d'itinéraire fiable via **OpenRouteService**
 (profil poids lourd `driving-hgv`, qui exclut les routes interdites aux gros
 véhicules), et reproduit fidèlement le moteur de calcul de devis du fichier
 Excel original (`FICHE DE CALCUL CONVOI CA TRANS.xlsx`).
+
+Interface 100% custom (HTML/CSS/JS + Leaflet pour la carte) — aucun
+framework de dashboard type Streamlit, contrôle total du design.
 
 ## Fonctionnement
 
@@ -17,6 +20,29 @@ Excel original (`FICHE DE CALCUL CONVOI CA TRANS.xlsx`).
 4. Le moteur de devis (`core/pricing.py`) calcule ensuite tous les postes
    (carburant, frais, marge, TVA, prix par place...) à l'identique de
    l'Excel original.
+
+## Architecture
+
+```
+ca-trans-devis/
+├── app.py                     # backend Flask (routes HTML + API JSON)
+├── requirements.txt
+├── Procfile                   # démarrage Render/Heroku (gunicorn)
+├── render.yaml                # blueprint de déploiement Render
+├── .env.example                # modèle de variables d'environnement
+├── data/seed_trajets.py       # peuple la base avec les 70 trajets connus
+├── core/
+│   ├── routing.py             # OpenRouteService (géocodage + itinéraire)
+│   ├── pricing.py             # moteur de calcul du devis
+│   └── db.py                  # SQLite : recherche tolérante, CRUD
+├── templates/index.html       # page unique (Jinja2)
+├── static/css/style.css       # design custom
+├── static/js/app.js           # carte Leaflet + appels API + fiche de devis
+└── tests/test_pricing.py
+```
+
+`core/` est indépendant du framework web : `pricing.py`, `db.py` et
+`routing.py` ne dépendent que de la stdlib et d'`openrouteservice`.
 
 ## Installation
 
@@ -39,16 +65,18 @@ pip install -r requirements.txt
 Copiez le modèle et renseignez votre clé :
 
 ```bash
-cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+cp .env.example .env
 ```
 
-Éditez `.streamlit/secrets.toml` :
+Éditez `.env` :
 
-```toml
-ors_api_key = "votre_clé_api_ici"
+```
+ORS_API_KEY=votre_clé_api_ici
 ```
 
 Ce fichier est listé dans `.gitignore` et ne doit **jamais** être commité.
+La clé n'est utilisée que côté serveur (`os.environ`), jamais exposée au
+navigateur.
 
 ## Initialiser la base de trajets connus
 
@@ -70,10 +98,16 @@ python data/seed_trajets.py --reset
 ## Lancement local
 
 ```bash
-streamlit run app.py
+python app.py
 ```
 
-L'application est accessible sur http://localhost:8501.
+L'application est accessible sur http://localhost:5000.
+
+Pour tester avec un serveur de production (comme sur Render) :
+
+```bash
+gunicorn app:app
+```
 
 ## Tests
 
@@ -84,45 +118,34 @@ pytest tests/
 Les tests valident le moteur de calcul (`core/pricing.py`) avec le cas de
 référence issu du fichier Excel original (distance 437 km).
 
-## Déploiement sur Streamlit Community Cloud
+## Déploiement sur Render
 
-1. Poussez ce dépôt sur GitHub (public ou privé).
-2. Rendez-vous sur https://share.streamlit.io et connectez votre compte
-   GitHub.
-3. Cliquez sur **New app**, sélectionnez le dépôt, la branche et
-   `app.py` comme fichier principal.
-4. Dans les **Secrets** du dashboard de l'application (Settings → Secrets),
-   ajoutez :
+1. Poussez ce dépôt sur GitHub (public ou privé). GitHub héberge uniquement
+   du contenu statique (GitHub Pages) — Render exécute réellement l'app
+   Flask, connectée en continu à votre repo GitHub (déploiement automatique
+   à chaque push, comme Streamlit Cloud).
+2. Sur https://dashboard.render.com, cliquez sur **New +** → **Web Service**,
+   connectez votre compte GitHub et sélectionnez ce dépôt.
+3. Render détecte `render.yaml` automatiquement (build : `pip install -r
+   requirements.txt`, démarrage : `gunicorn app:app`). Sans `render.yaml`,
+   renseignez ces commandes manuellement dans les paramètres du service.
+4. Dans **Environment**, ajoutez la variable :
 
-   ```toml
-   ors_api_key = "votre_clé_api_ici"
+   ```
+   ORS_API_KEY = votre_clé_api_ici
    ```
 
-5. Déployez. À chaque push sur la branche configurée, l'application se
+5. Déployez. À chaque push sur la branche configurée, le service se
    redéploie automatiquement.
 
-Note : sur Streamlit Community Cloud, le système de fichiers est éphémère —
-la base SQLite (`data/ca_trans.db`) est recréée à chaque redéploiement.
+Note : le système de fichiers de Render (plan gratuit) est éphémère — la
+base SQLite (`data/ca_trans.db`) est recréée à chaque redéploiement.
 `app.py` réinitialise le schéma et réinsère automatiquement les 70 trajets
-connus à chaque démarrage, donc aucune action manuelle n'est nécessaire
-après un redéploiement. Les trajets ajoutés en production via l'application
-(source `ors`/`manuel`) ne survivent en revanche pas à un redéploiement,
-puisque le disque n'est pas persistant.
-
-## Arborescence
-
-```
-ca-trans-devis/
-├── app.py                     # interface Streamlit
-├── requirements.txt
-├── .streamlit/secrets.toml.example
-├── data/seed_trajets.py       # peuple la base avec les 70 trajets connus
-├── core/
-│   ├── routing.py             # OpenRouteService (géocodage + itinéraire)
-│   ├── pricing.py             # moteur de calcul du devis
-│   └── db.py                  # SQLite : recherche tolérante, CRUD
-└── tests/test_pricing.py
-```
+connus à chaque démarrage, donc aucune action manuelle n'est nécessaire.
+Les trajets ajoutés en production via l'application (source `ors`/`manuel`)
+ne survivent en revanche pas à un redéploiement, puisque le disque n'est pas
+persistant (passer à un disque persistant Render si cette persistance est
+nécessaire).
 
 ## Ce que l'application ne modifie pas
 
