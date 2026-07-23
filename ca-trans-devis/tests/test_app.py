@@ -6,13 +6,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pytest
 
 import app as app_module
+from core.routing import RoutingError
+
+
+def _routing_indisponible(*args, **kwargs):
+    raise RoutingError("service de routage non disponible (test)")
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(app_module, "get_api_key", lambda: "")
     db_path = tmp_path / "test.db"
     monkeypatch.setattr("core.db.DB_PATH", db_path)
+    # Empêche les appels HTTP réels au service de routage dans les tests
+    monkeypatch.setattr("core.routing.resoudre_itineraire", _routing_indisponible)
+    monkeypatch.setattr("core.routing.calculer_itineraire", _routing_indisponible)
     app_module.init_db()
     app_module.seed_trajets()
     app_module.app.config.update(TESTING=True)
@@ -41,7 +48,8 @@ def test_resoudre_trajet_connu(client):
     assert data["distance_km"] == 330.0
 
 
-def test_resoudre_sans_cle_api(client):
+def test_resoudre_trajet_inconnu(client):
+    # Trajet absent de la base → tente le routage → erreur (service mocké)
     rep = client.post("/api/resoudre", json={"origine": "Ville inconnue X", "destination": "Ville inconnue Y"})
     assert rep.status_code == 200
     data = rep.get_json()
@@ -80,3 +88,31 @@ def test_enregistrer_trajet(client):
     assert rep.status_code == 201
     trajets = client.get("/api/trajets").get_json()
     assert any(t["origine"] == "Test A" for t in trajets)
+
+
+def test_modifier_trajet(client):
+    # Insérer un trajet, puis le modifier
+    rep = client.post(
+        "/api/trajet",
+        json={"origine": "Avant", "destination": "Après", "distance_km": 100, "source": "manuel"},
+    )
+    trajet_id = rep.get_json()["id"]
+    rep2 = client.put(
+        f"/api/trajet/{trajet_id}",
+        json={"origine": "Modifié A", "destination": "Modifié B", "distance_km": 200},
+    )
+    assert rep2.status_code == 200
+    trajets = client.get("/api/trajets").get_json()
+    assert any(t["origine"] == "Modifié A" for t in trajets)
+
+
+def test_supprimer_trajet(client):
+    rep = client.post(
+        "/api/trajet",
+        json={"origine": "A supprimer", "destination": "Dest", "distance_km": 50, "source": "manuel"},
+    )
+    trajet_id = rep.get_json()["id"]
+    rep2 = client.delete(f"/api/trajet/{trajet_id}")
+    assert rep2.status_code == 200
+    trajets = client.get("/api/trajets").get_json()
+    assert not any(t["id"] == trajet_id for t in trajets)

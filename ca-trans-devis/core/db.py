@@ -113,3 +113,35 @@ def inserer_trajet(
     if close:
         conn.close()
     return trajet_id
+
+
+def mettre_a_jour_trajet(
+    trajet_id: int,
+    origine: str,
+    destination: str,
+    distance_km: float | None,
+    montant_aller: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> bool:
+    close = conn is None
+    conn = conn or get_connection()
+    cur = conn.execute(
+        "UPDATE trajets SET origine=?, destination=?, distance_km=?, montant_aller=? WHERE id=?",
+        (origine, destination, distance_km, montant_aller, trajet_id),
+    )
+    conn.commit()
+    affected = cur.rowcount > 0
+    if close:
+        conn.close()
+    return affected
+
+
+def supprimer_trajet(trajet_id: int, conn: sqlite3.Connection | None = None) -> bool:
+    close = conn is None
+    conn = conn or get_connection()
+    cur = conn.execute("DELETE FROM trajets WHERE id=?", (trajet_id,))
+    conn.commit()
+    affected = cur.rowcount > 0
+    if close:
+        conn.close()
+    return affected

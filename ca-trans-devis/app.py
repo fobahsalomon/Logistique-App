@@ -10,7 +10,7 @@ from dataclasses import asdict
 
 from flask import Flask, jsonify, render_template, request
 
-from core.db import init_db, inserer_trajet, list_trajets, rechercher_trajet
+from core.db import init_db, inserer_trajet, list_trajets, mettre_a_jour_trajet, rechercher_trajet, supprimer_trajet
 from core.pricing import DevisInput, calculer_devis, frais_mission_defaut
 from core.routing import RoutingError, calculer_itineraire, get_client, resoudre_itineraire
 from data.seed_trajets import seed as seed_trajets
@@ -157,6 +157,36 @@ def api_enregistrer_trajet():
         origine=origine, destination=destination, distance_km=distance_km, source=source
     )
     return jsonify({"id": trajet_id}), 201
+
+
+@app.put("/api/trajet/<int:trajet_id>")
+def api_modifier_trajet(trajet_id: int):
+    payload = request.get_json(force=True) or {}
+    origine = (payload.get("origine") or "").strip()
+    destination = (payload.get("destination") or "").strip()
+    if not origine or not destination:
+        return jsonify({"erreur": "origine et destination sont requis."}), 400
+    distance_km = payload.get("distance_km")
+    if distance_km is not None:
+        try:
+            distance_km = float(distance_km)
+        except (TypeError, ValueError):
+            distance_km = None
+    montant_aller = payload.get("montant_aller")
+    if montant_aller is not None:
+        montant_aller = str(montant_aller).strip() or None
+    ok = mettre_a_jour_trajet(trajet_id, origine, destination, distance_km, montant_aller)
+    if not ok:
+        return jsonify({"erreur": "Trajet introuvable."}), 404
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/trajet/<int:trajet_id>")
+def api_supprimer_trajet(trajet_id: int):
+    ok = supprimer_trajet(trajet_id)
+    if not ok:
+        return jsonify({"erreur": "Trajet introuvable."}), 404
+    return jsonify({"ok": True})
 
 
 @app.post("/api/devis")

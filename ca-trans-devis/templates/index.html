@@ -65,9 +65,8 @@
       </div>
 
       <div class="field">
-        <span>Nombre de jours avec le véhicule</span>
-        <label><input type="radio" name="nb-jours" value="1" checked> 1 jour</label>
-        <label><input type="radio" name="nb-jours" value="2"> 2 jours</label>
+        <label for="nb-jours">Nombre de jours avec le véhicule</label>
+        <input id="nb-jours" type="number" min="1" step="1" value="1">
       </div>
 
       <div class="row row-2">
@@ -130,6 +129,7 @@
               <th>Distance (km)</th>
               <th>Montant aller</th>
               <th>Source</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -137,6 +137,34 @@
       </div>
     </details>
   </section>
+
+  <dialog id="modal-edition" class="modal">
+    <h3>Modifier le trajet</h3>
+    <input type="hidden" id="edit-id">
+    <div class="field">
+      <label for="edit-origine">Origine</label>
+      <input id="edit-origine" type="text">
+    </div>
+    <div class="field">
+      <label for="edit-destination">Destination</label>
+      <input id="edit-destination" type="text">
+    </div>
+    <div class="row row-2">
+      <div class="field">
+        <label for="edit-distance">Distance aller (km)</label>
+        <input id="edit-distance" type="number" min="0" step="0.1">
+      </div>
+      <div class="field">
+        <label for="edit-montant">Montant aller</label>
+        <input id="edit-montant" type="text">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button id="btn-sauvegarder-edition" class="btn btn-primary">Enregistrer</button>
+      <button id="btn-annuler-edition" class="btn">Annuler</button>
+      <button id="btn-supprimer-edition" class="btn btn-danger">Supprimer</button>
+    </div>
+  </dialog>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>

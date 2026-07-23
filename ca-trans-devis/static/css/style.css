@@ -208,3 +208,30 @@ tbody tr:hover { background: var(--panel-alt); }
 
 summary { list-style: none; margin-bottom: 4px; cursor: pointer; }
 summary::-webkit-details-marker { display: none; }
+
+.btn-danger {
+  background: rgba(226, 87, 76, 0.15);
+  border-color: var(--red);
+  color: var(--red);
+}
+.btn-danger:hover { background: rgba(226, 87, 76, 0.3); }
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.col-actions { white-space: nowrap; }
+
+dialog.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 28px;
+  min-width: 380px;
+  max-width: 90vw;
+}
+dialog.modal::backdrop { background: rgba(0, 0, 0, 0.65); }
+dialog.modal h3 { margin: 0 0 20px; font-size: 16px; font-weight: 600; }
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }

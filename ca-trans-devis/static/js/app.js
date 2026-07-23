@@ -84,12 +84,16 @@
     calculerDevis();
   });
 
-  // ------------------------------------------------------------ résolution
-  async function appelApi(url, corps) {
-    const options = corps
-      ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps) }
-      : { method: "GET" };
+  // ------------------------------------------------------------ API helper
+  async function appelApi(url, corps, methode) {
+    const method = methode || (corps != null ? "POST" : "GET");
+    const options = { method };
+    if (corps != null) {
+      options.headers = { "Content-Type": "application/json" };
+      options.body = JSON.stringify(corps);
+    }
     const rep = await fetch(url, options);
+    if (rep.status === 204) return {};
     return rep.json();
   }
 
@@ -174,13 +178,12 @@
     document.getElementById(id).addEventListener("input", calculerDevis);
   });
 
-  document.querySelectorAll('input[name="nb-jours"]').forEach((el) => {
-    el.addEventListener("change", async (e) => {
-      const reponse = await appelApi(`/api/frais-mission?jours=${e.target.value}`);
-      document.getElementById("frais-chauffeur").value = reponse.frais_chauffeur;
-      document.getElementById("frais-convoyeur").value = reponse.frais_convoyeur;
-      calculerDevis();
-    });
+  document.getElementById("nb-jours").addEventListener("change", async (e) => {
+    const jours = parseInt(e.target.value, 10) || 1;
+    const reponse = await appelApi(`/api/frais-mission?jours=${jours}`);
+    document.getElementById("frais-chauffeur").value = reponse.frais_chauffeur;
+    document.getElementById("frais-convoyeur").value = reponse.frais_convoyeur;
+    calculerDevis();
   });
 
   function formaterFcfa(valeur) {
@@ -243,6 +246,35 @@
   // ------------------------------------------------------- base de trajets
   let trajetsCache = [];
 
+  const corpsTable = document.querySelector("#table-trajets tbody");
+
+  corpsTable.addEventListener("click", (e) => {
+    const btnEdit = e.target.closest(".btn-edit");
+    if (btnEdit) {
+      e.stopPropagation();
+      const id = parseInt(btnEdit.dataset.id, 10);
+      const trajet = trajetsCache.find((t) => t.id === id);
+      if (trajet) ouvrirModalEdition(trajet);
+      return;
+    }
+    const tr = e.target.closest("tr[data-id]");
+    if (tr) {
+      const id = parseInt(tr.dataset.id, 10);
+      const trajet = trajetsCache.find((t) => t.id === id);
+      if (!trajet) return;
+      document.getElementById("origine").value = trajet.origine;
+      document.getElementById("destination").value = trajet.destination;
+      if (trajet.distance_km) {
+        state.distanceKm = trajet.distance_km;
+        state.statut = "base";
+        state.origineTexte = trajet.origine;
+        state.destinationTexte = trajet.destination;
+        afficherStatut("base", `Trajet réutilisé : ${trajet.origine} → ${trajet.destination} (${trajet.distance_km} km)`);
+        calculerDevis();
+      }
+    }
+  });
+
   async function chargerTrajets() {
     trajetsCache = await appelApi("/api/trajets");
     remplirDatalist();
@@ -257,37 +289,17 @@
   }
 
   function afficherTableTrajets(trajets) {
-    const corpsTable = document.querySelector("#table-trajets tbody");
-    corpsTable.innerHTML = trajets
-      .map(
-        (t) => `
-        <tr data-id="${t.id}">
-          <td>${t.origine}</td>
-          <td>${t.destination}</td>
-          <td>${t.distance_km ?? ""}</td>
-          <td>${t.montant_aller ?? ""}</td>
-          <td>${t.source}</td>
-        </tr>`
-      )
-      .join("");
-
-    corpsTable.querySelectorAll("tr").forEach((tr) => {
-      tr.addEventListener("click", () => {
-        const id = parseInt(tr.dataset.id, 10);
-        const trajet = trajetsCache.find((t) => t.id === id);
-        if (!trajet) return;
-        document.getElementById("origine").value = trajet.origine;
-        document.getElementById("destination").value = trajet.destination;
-        if (trajet.distance_km) {
-          state.distanceKm = trajet.distance_km;
-          state.statut = "base";
-          state.origineTexte = trajet.origine;
-          state.destinationTexte = trajet.destination;
-          afficherStatut("base", `Trajet réutilisé : ${trajet.origine} → ${trajet.destination} (${trajet.distance_km} km)`);
-          calculerDevis();
-        }
-      });
-    });
+    corpsTable.innerHTML = trajets.map((t) => `
+      <tr data-id="${t.id}">
+        <td>${t.origine}</td>
+        <td>${t.destination}</td>
+        <td>${t.distance_km ?? ""}</td>
+        <td>${t.montant_aller ?? ""}</td>
+        <td>${t.source}</td>
+        <td class="col-actions">
+          <button class="btn btn-sm btn-edit" data-id="${t.id}">Modifier</button>
+        </td>
+      </tr>`).join("");
   }
 
   document.getElementById("filtre-trajets").addEventListener("input", (e) => {
@@ -296,6 +308,43 @@
       (t) => t.origine.toLowerCase().includes(f) || t.destination.toLowerCase().includes(f)
     );
     afficherTableTrajets(filtres);
+  });
+
+  // --------------------------------------------------- modal d'édition
+  const modal = document.getElementById("modal-edition");
+
+  function ouvrirModalEdition(trajet) {
+    document.getElementById("edit-id").value = trajet.id;
+    document.getElementById("edit-origine").value = trajet.origine;
+    document.getElementById("edit-destination").value = trajet.destination;
+    document.getElementById("edit-distance").value = trajet.distance_km ?? "";
+    document.getElementById("edit-montant").value = trajet.montant_aller ?? "";
+    modal.showModal();
+  }
+
+  document.getElementById("btn-annuler-edition").addEventListener("click", () => modal.close());
+
+  document.getElementById("btn-sauvegarder-edition").addEventListener("click", async () => {
+    const id = parseInt(document.getElementById("edit-id").value, 10);
+    const distanceVal = document.getElementById("edit-distance").value;
+    const corps = {
+      origine: document.getElementById("edit-origine").value.trim(),
+      destination: document.getElementById("edit-destination").value.trim(),
+      distance_km: distanceVal !== "" ? parseFloat(distanceVal) : null,
+      montant_aller: document.getElementById("edit-montant").value.trim() || null,
+    };
+    if (!corps.origine || !corps.destination) return;
+    await appelApi(`/api/trajet/${id}`, corps, "PUT");
+    modal.close();
+    await chargerTrajets();
+  });
+
+  document.getElementById("btn-supprimer-edition").addEventListener("click", async () => {
+    if (!confirm("Supprimer ce trajet définitivement ?")) return;
+    const id = parseInt(document.getElementById("edit-id").value, 10);
+    await appelApi(`/api/trajet/${id}`, null, "DELETE");
+    modal.close();
+    await chargerTrajets();
   });
 
   chargerTrajets();
