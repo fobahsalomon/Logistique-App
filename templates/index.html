@@ -58,10 +58,18 @@
 
       <div id="carte" class="carte"></div>
 
-      <div class="row">
-        <button id="btn-itineraire-carte" class="btn" hidden>Calculer l'itinéraire entre ces deux points</button>
-        <button id="btn-enregistrer-trajet" class="btn" hidden>Enregistrer ce trajet dans la base</button>
+      <div class="row carte-actions">
+        <div>
+          <button id="btn-itineraire-carte" class="btn" hidden>Calculer l'itinéraire entre ces deux points</button>
+          <button id="btn-enregistrer-trajet" class="btn" hidden>Enregistrer ce trajet dans la base</button>
+        </div>
+        <button id="btn-recentrer" class="btn btn-sm" hidden title="Recentrer la carte sur l'itinéraire">⟲ Recentrer</button>
       </div>
+
+      <details id="panneau-instructions" hidden>
+        <summary class="lien-secondaire">Instructions de navigation</summary>
+        <ol id="liste-instructions" class="instructions-liste"></ol>
+      </details>
     </section>
 
     <section class="panel panel-side">

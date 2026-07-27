@@ -113,6 +113,7 @@ def api_resoudre():
             "origine_point": None,
             "destination_point": None,
             "geometrie": None,
+            "etapes": [],
         })
 
     try:
@@ -134,6 +135,7 @@ def api_resoudre():
         "origine_point": {"lat": o.lat, "lon": o.lon, "label": o.label},
         "destination_point": {"lat": d.lat, "lon": d.lon, "label": d.label},
         "geometrie": itineraire.geometrie,
+        "etapes": itineraire.etapes,
     })
 
 
@@ -162,6 +164,7 @@ def api_itineraire():
         "duree_min": duree_min,
         "message": f"Itinéraire calculé : {distance_km} km, ~{duree_min} min",
         "geometrie": itineraire.geometrie,
+        "etapes": itineraire.etapes,
     })
 
 

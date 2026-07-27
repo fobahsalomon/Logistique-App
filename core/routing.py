@@ -1,13 +1,14 @@
-"""Routage via OSRM (serveur public) + géocodage Nominatim.
+"""Routage via OSRM (serveur public) + géocodage Nominatim + Overpass.
 
 Ordre de résolution pour un lieu :
   1. lieux_connus (base locale, zéro appel réseau)
   2. Nominatim — résultat automatiquement sauvegardé dans lieux_connus
-  3. Clic manuel sur la carte (géré côté frontend)
+  3. Overpass API — résultat automatiquement sauvegardé dans lieux_connus
+  4. Clic manuel sur la carte (géré côté frontend)
 """
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import requests
 
@@ -34,7 +35,8 @@ class PointGeocode:
 class Itineraire:
     distance_km: float
     duree_min: float
-    geometrie: dict  # GeoJSON LineString
+    geometrie: dict           # GeoJSON LineString
+    etapes: list = field(default_factory=list)  # étapes turn-by-turn
 
 
 def get_client(api_key: str = ""):
@@ -71,7 +73,7 @@ def _geocoder_nominatim(texte: str) -> PointGeocode | None:
 
 
 def geocoder(client, texte: str) -> PointGeocode | None:
-    """Résout un lieu : base locale d'abord, puis Nominatim (avec sauvegarde auto)."""
+    """Résout un lieu : base locale → Nominatim → Overpass (avec sauvegarde auto)."""
     from core.db import inserer_lieu, rechercher_lieu
 
     # 1. Base locale — zéro réseau
@@ -81,13 +83,82 @@ def geocoder(client, texte: str) -> PointGeocode | None:
 
     # 2. Nominatim
     point = _geocoder_nominatim(texte)
-    if point is None:
-        return None
+    if point is not None:
+        inserer_lieu(nom=texte, lat=point.lat, lon=point.lon, source="nominatim")
+        return point
 
-    # Sauvegarde automatique pour les prochains appels
-    inserer_lieu(nom=texte, lat=point.lat, lon=point.lon, source="nominatim")
-    return point
+    # 3. Overpass API — dernière chance avant clic manuel
+    from core.osm_overpass import geocoder_overpass
+    result = geocoder_overpass(texte)
+    if result is not None:
+        inserer_lieu(nom=texte, lat=result["lat"], lon=result["lon"], source="overpass")
+        return PointGeocode(lat=result["lat"], lon=result["lon"], label=result["label"])
 
+    return None
+
+
+# ---------------------------------------------------------------- instructions
+
+def _mod_fr(mod: str) -> str:
+    return {
+        "left": "à gauche",
+        "right": "à droite",
+        "slight left": "légèrement à gauche",
+        "slight right": "légèrement à droite",
+        "sharp left": "fortement à gauche",
+        "sharp right": "fortement à droite",
+        "straight": "tout droit",
+        "uturn": "faire demi-tour",
+    }.get(mod, "")
+
+
+def _instruction_fr(step: dict) -> str:
+    maneuver = step.get("maneuver", {})
+    t = maneuver.get("type", "")
+    mod = maneuver.get("modifier", "")
+    nom = step.get("name", "")
+    sur = f" sur {nom}" if nom else ""
+    dir_fr = _mod_fr(mod)
+
+    if t == "depart":
+        return f"Partir{sur}"
+    if t == "arrive":
+        return "Arriver à destination"
+    if t == "turn":
+        return (f"Tourner {dir_fr}{sur}" if dir_fr else f"Tourner{sur}")
+    if t in ("new name", "continue", "notification"):
+        return f"Continuer{sur}"
+    if t == "merge":
+        return f"Rejoindre{sur}"
+    if t == "on ramp":
+        return f"Prendre la bretelle{sur}"
+    if t == "off ramp":
+        return f"Quitter l'autoroute{sur}"
+    if t == "fork":
+        return (f"Rester {dir_fr}{sur}" if dir_fr else f"Bifurquer{sur}")
+    if t == "end of road":
+        return (f"Au bout de la route, tourner {dir_fr}{sur}" if dir_fr
+                else f"Au bout de la route{sur}")
+    if t in ("roundabout", "rotary"):
+        return f"Prendre le rond-point{sur}"
+    if t in ("roundabout turn", "exit roundabout"):
+        return f"Sortir du rond-point{sur}"
+    return f"Continuer{sur}"
+
+
+def _etapes_depuis_osrm(route: dict) -> list:
+    etapes = []
+    for leg in route.get("legs", []):
+        for step in leg.get("steps", []):
+            etapes.append({
+                "instruction": _instruction_fr(step),
+                "distance_m": step.get("distance", 0),
+                "duree_s": step.get("duration", 0),
+            })
+    return etapes
+
+
+# ---------------------------------------------------------------- itinéraire
 
 def calculer_itineraire(client, origine: tuple, destination: tuple) -> Itineraire:
     """Calcule l'itinéraire routier via OSRM entre deux points (lon, lat)."""
@@ -97,7 +168,7 @@ def calculer_itineraire(client, origine: tuple, destination: tuple) -> Itinerair
     try:
         rep = requests.get(
             f"{OSRM_BASE}/route/v1/driving/{coords}",
-            params={"overview": "full", "geometries": "geojson"},
+            params={"overview": "full", "geometries": "geojson", "steps": "true"},
             timeout=15,
         )
         rep.raise_for_status()
@@ -109,6 +180,7 @@ def calculer_itineraire(client, origine: tuple, destination: tuple) -> Itinerair
             distance_km=route["distance"] / 1000,
             duree_min=route["duration"] / 60,
             geometrie=route["geometry"],
+            etapes=_etapes_depuis_osrm(route),
         )
     except RoutingError:
         raise
@@ -117,7 +189,7 @@ def calculer_itineraire(client, origine: tuple, destination: tuple) -> Itinerair
 
 
 def resoudre_itineraire(client, origine_texte: str, destination_texte: str):
-    """Géocode les deux lieux (base locale → Nominatim) puis calcule l'itinéraire."""
+    """Géocode les deux lieux (base locale → Nominatim → Overpass) puis calcule l'itinéraire."""
     o = geocoder(client, origine_texte)
     if o is None:
         raise RoutingError(f"Origine introuvable : « {origine_texte} »")
