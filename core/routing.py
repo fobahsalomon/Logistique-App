@@ -1,7 +1,9 @@
 """Routage via OSRM (serveur public) + géocodage Nominatim.
 
-Aucune clé API requise. Nominatim impose max 1 requête/seconde :
-on insère un sleep entre les deux appels de géocodage.
+Ordre de résolution pour un lieu :
+  1. lieux_connus (base locale, zéro appel réseau)
+  2. Nominatim — résultat automatiquement sauvegardé dans lieux_connus
+  3. Clic manuel sur la carte (géré côté frontend)
 """
 
 import time
@@ -12,6 +14,9 @@ import requests
 OSRM_BASE = "http://router.project-osrm.org"
 NOMINATIM_BASE = "https://nominatim.openstreetmap.org"
 _UA = "CA-TRANS-Devis/1.0"
+
+# Horodatage du dernier appel Nominatim pour respecter la limite 1 req/s
+_last_nominatim_call: float = 0.0
 
 
 class RoutingError(Exception):
@@ -37,8 +42,12 @@ def get_client(api_key: str = ""):
     return None
 
 
-def geocoder(client, texte: str) -> PointGeocode | None:
-    """Géocode un lieu via Nominatim, limité à la Côte d'Ivoire."""
+def _geocoder_nominatim(texte: str) -> PointGeocode | None:
+    """Appel Nominatim avec respect de la limite 1 req/s."""
+    global _last_nominatim_call
+    elapsed = time.time() - _last_nominatim_call
+    if elapsed < 1.1:
+        time.sleep(1.1 - elapsed)
     try:
         rep = requests.get(
             f"{NOMINATIM_BASE}/search",
@@ -47,6 +56,7 @@ def geocoder(client, texte: str) -> PointGeocode | None:
             headers={"User-Agent": _UA},
             timeout=10,
         )
+        _last_nominatim_call = time.time()
         rep.raise_for_status()
         data = rep.json()
         if not data:
@@ -58,6 +68,25 @@ def geocoder(client, texte: str) -> PointGeocode | None:
         raise
     except Exception as exc:
         raise RoutingError(f"Géocodage échoué pour « {texte} » : {exc}") from exc
+
+
+def geocoder(client, texte: str) -> PointGeocode | None:
+    """Résout un lieu : base locale d'abord, puis Nominatim (avec sauvegarde auto)."""
+    from core.db import inserer_lieu, rechercher_lieu
+
+    # 1. Base locale — zéro réseau
+    lieu = rechercher_lieu(texte)
+    if lieu:
+        return PointGeocode(lat=lieu["latitude"], lon=lieu["longitude"], label=lieu["nom"])
+
+    # 2. Nominatim
+    point = _geocoder_nominatim(texte)
+    if point is None:
+        return None
+
+    # Sauvegarde automatique pour les prochains appels
+    inserer_lieu(nom=texte, lat=point.lat, lon=point.lon, source="nominatim")
+    return point
 
 
 def calculer_itineraire(client, origine: tuple, destination: tuple) -> Itineraire:
@@ -88,12 +117,10 @@ def calculer_itineraire(client, origine: tuple, destination: tuple) -> Itinerair
 
 
 def resoudre_itineraire(client, origine_texte: str, destination_texte: str):
-    """Géocode les deux lieux puis calcule l'itinéraire."""
+    """Géocode les deux lieux (base locale → Nominatim) puis calcule l'itinéraire."""
     o = geocoder(client, origine_texte)
     if o is None:
         raise RoutingError(f"Origine introuvable : « {origine_texte} »")
-    # Nominatim exige max 1 req/s
-    time.sleep(1.1)
     d = geocoder(client, destination_texte)
     if d is None:
         raise RoutingError(f"Destination introuvable : « {destination_texte} »")

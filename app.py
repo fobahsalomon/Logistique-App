@@ -1,8 +1,7 @@
 """CA TRANS — Fiche de calcul convoi (API Flask).
 
-Remplace la recherche manuelle de distance sur Google Maps par un calcul
-d'itinéraire fiable via OpenRouteService (profil poids lourd) et reproduit
-le moteur de calcul de devis de l'Excel original.
+Calcul d'itinéraire via OSRM + Nominatim (sans clé API).
+Moteur de devis reproduisant exactement les formules Excel d'origine.
 """
 
 import os
@@ -10,14 +9,22 @@ from dataclasses import asdict
 
 from flask import Flask, jsonify, render_template, request
 
-from core.db import init_db, inserer_trajet, list_trajets, mettre_a_jour_trajet, rechercher_trajet, supprimer_trajet
+from core.db import (
+    init_db,
+    inserer_lieu,
+    inserer_trajet,
+    list_trajets,
+    mettre_a_jour_trajet,
+    rechercher_lieux,
+    rechercher_trajet,
+    supprimer_trajet,
+)
 from core.pricing import DevisInput, calculer_devis, frais_mission_defaut
 from core.routing import RoutingError, calculer_itineraire, get_client, resoudre_itineraire
 from data.seed_trajets import seed as seed_trajets
 
 try:
     from dotenv import load_dotenv
-
     load_dotenv()
 except ImportError:
     pass
@@ -61,6 +68,30 @@ def api_frais_mission():
     return jsonify({"frais_chauffeur": chauffeur, "frais_convoyeur": convoyeur})
 
 
+@app.get("/api/lieux")
+def api_lieux():
+    """Autocomplétion des lieux — cherche dans lieux_connus."""
+    q = request.args.get("q", "").strip()
+    lieux = rechercher_lieux(q, limit=10)
+    return jsonify([
+        {"id": l["id"], "nom": l["nom"], "lat": l["latitude"], "lon": l["longitude"]}
+        for l in lieux
+    ])
+
+
+@app.post("/api/lieu")
+def api_enregistrer_lieu():
+    """Enregistre un lieu nommé manuellement (clic sur la carte)."""
+    payload = request.get_json(force=True) or {}
+    nom = (payload.get("nom") or "").strip()
+    lat = payload.get("lat")
+    lon = payload.get("lon")
+    if not nom or lat is None or lon is None:
+        return jsonify({"erreur": "nom, lat et lon sont requis."}), 400
+    lieu_id = inserer_lieu(nom=nom, lat=float(lat), lon=float(lon), source="manuel")
+    return jsonify({"id": lieu_id}), 201
+
+
 @app.post("/api/resoudre")
 def api_resoudre():
     payload = request.get_json(force=True) or {}
@@ -72,57 +103,51 @@ def api_resoudre():
 
     trajet_connu = rechercher_trajet(origine_texte, destination_texte)
     if trajet_connu is not None and trajet_connu["distance_km"] is not None:
-        return jsonify(
-            {
-                "statut": "base",
-                "distance_km": trajet_connu["distance_km"],
-                "message": (
-                    f"Trajet trouvé en base : {trajet_connu['origine']} → "
-                    f"{trajet_connu['destination']} ({trajet_connu['distance_km']} km)"
-                ),
-                "origine_point": None,
-                "destination_point": None,
-                "geometrie": None,
-            }
-        )
+        return jsonify({
+            "statut": "base",
+            "distance_km": trajet_connu["distance_km"],
+            "message": (
+                f"Trajet trouvé en base : {trajet_connu['origine']} → "
+                f"{trajet_connu['destination']} ({trajet_connu['distance_km']} km)"
+            ),
+            "origine_point": None,
+            "destination_point": None,
+            "geometrie": None,
+        })
 
-    api_key = get_api_key()
     try:
-        client = get_client(api_key)
+        client = get_client()
         o, d, itineraire = resoudre_itineraire(client, origine_texte, destination_texte)
     except RoutingError as exc:
         return jsonify({"statut": "erreur", "message": str(exc)}), 200
 
     distance_km = round(itineraire.distance_km, 1)
     duree_min = round(itineraire.duree_min)
-    return jsonify(
-        {
-            "statut": "ors",
-            "distance_km": distance_km,
-            "duree_min": duree_min,
-            "message": (
-                f"Itinéraire calculé via OpenRouteService : {o.label} → {d.label} "
-                f"({distance_km} km, ~{duree_min} min)"
-            ),
-            "origine_point": {"lat": o.lat, "lon": o.lon, "label": o.label},
-            "destination_point": {"lat": d.lat, "lon": d.lon, "label": d.label},
-            "geometrie": itineraire.geometrie,
-        }
-    )
+    return jsonify({
+        "statut": "ors",
+        "distance_km": distance_km,
+        "duree_min": duree_min,
+        "message": (
+            f"Itinéraire calculé : {o.label} → {d.label} "
+            f"({distance_km} km, ~{duree_min} min)"
+        ),
+        "origine_point": {"lat": o.lat, "lon": o.lon, "label": o.label},
+        "destination_point": {"lat": d.lat, "lon": d.lon, "label": d.label},
+        "geometrie": itineraire.geometrie,
+    })
 
 
 @app.post("/api/itineraire")
 def api_itineraire():
-    """Calcule l'itinéraire ORS entre deux points placés manuellement sur la carte."""
+    """Calcule l'itinéraire OSRM entre deux points placés manuellement sur la carte."""
     payload = request.get_json(force=True) or {}
     origine = payload.get("origine")
     destination = payload.get("destination")
     if not origine or not destination:
         return jsonify({"statut": "erreur", "message": "Deux points sont requis."}), 400
 
-    api_key = get_api_key()
     try:
-        client = get_client(api_key)
+        client = get_client()
         itineraire = calculer_itineraire(
             client, (origine["lon"], origine["lat"]), (destination["lon"], destination["lat"])
         )
@@ -131,15 +156,13 @@ def api_itineraire():
 
     distance_km = round(itineraire.distance_km, 1)
     duree_min = round(itineraire.duree_min)
-    return jsonify(
-        {
-            "statut": "ors",
-            "distance_km": distance_km,
-            "duree_min": duree_min,
-            "message": f"Itinéraire calculé via OpenRouteService : {distance_km} km, ~{duree_min} min",
-            "geometrie": itineraire.geometrie,
-        }
-    )
+    return jsonify({
+        "statut": "ors",
+        "distance_km": distance_km,
+        "duree_min": duree_min,
+        "message": f"Itinéraire calculé : {distance_km} km, ~{duree_min} min",
+        "geometrie": itineraire.geometrie,
+    })
 
 
 @app.post("/api/trajet")

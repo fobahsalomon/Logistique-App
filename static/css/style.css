@@ -235,3 +235,43 @@ dialog.modal {
 dialog.modal::backdrop { background: rgba(0, 0, 0, 0.65); }
 dialog.modal h3 { margin: 0 0 20px; font-size: 16px; font-weight: 600; }
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+
+/* -------------------------------------------------------- autocomplete */
+.autocomplete-wrap { position: relative; }
+
+.autocomplete-liste {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--panel);
+  border: 1px solid var(--yellow);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  z-index: 1000;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.autocomplete-liste li {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+}
+.autocomplete-liste li:last-child { border-bottom: none; }
+.autocomplete-liste li:hover { background: var(--panel-alt); color: var(--yellow); }
+
+/* -------------------------------------------------------- carte secondaire */
+.details-carte { margin: 8px 0 12px; }
+.details-carte summary { margin-bottom: 8px; }
+.lien-secondaire {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

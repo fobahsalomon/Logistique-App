@@ -91,7 +91,6 @@ def test_enregistrer_trajet(client):
 
 
 def test_modifier_trajet(client):
-    # Insérer un trajet, puis le modifier
     rep = client.post(
         "/api/trajet",
         json={"origine": "Avant", "destination": "Après", "distance_km": 100, "source": "manuel"},
@@ -116,3 +115,27 @@ def test_supprimer_trajet(client):
     assert rep2.status_code == 200
     trajets = client.get("/api/trajets").get_json()
     assert not any(t["id"] == trajet_id for t in trajets)
+
+
+def test_autocomplete_lieux_vide(client):
+    rep = client.get("/api/lieux?q=ab")
+    assert rep.status_code == 200
+    assert rep.get_json() == []
+
+
+def test_autocomplete_lieux_apres_insertion(client):
+    # Insérer un lieu manuellement puis le retrouver via l'autocomplete
+    rep = client.post("/api/lieu", json={"nom": "Bouaké Centre", "lat": 7.69, "lon": -5.03})
+    assert rep.status_code == 201
+    rep2 = client.get("/api/lieux?q=bouake")
+    lieux = rep2.get_json()
+    assert any("Bouaké" in l["nom"] or "BOUAKE" in l["nom"].upper() for l in lieux)
+
+
+def test_lieu_idempotent(client):
+    from core.db import inserer_lieu, rechercher_lieu
+    inserer_lieu("Yamoussoukro", 6.82, -5.27, source="test")
+    inserer_lieu("Yamoussoukro", 6.82, -5.27, source="test")  # doublon
+    l = rechercher_lieu("Yamoussoukro")
+    assert l is not None
+    assert l["nom"] == "Yamoussoukro"

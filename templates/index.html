@@ -21,13 +21,18 @@
       <div class="row row-2">
         <div class="field">
           <label for="origine">Origine</label>
-          <input id="origine" list="liste-lieux" placeholder="Ex : San Pedro" autocomplete="off">
+          <div class="autocomplete-wrap">
+            <input id="origine" placeholder="Ex : San Pedro" autocomplete="off">
+            <ul id="suggestions-origine" class="autocomplete-liste" hidden></ul>
+          </div>
         </div>
         <div class="field">
           <label for="destination">Destination</label>
-          <input id="destination" list="liste-lieux" placeholder="Ex : Abidjan" autocomplete="off">
+          <div class="autocomplete-wrap">
+            <input id="destination" placeholder="Ex : Abidjan" autocomplete="off">
+            <ul id="suggestions-destination" class="autocomplete-liste" hidden></ul>
+          </div>
         </div>
-        <datalist id="liste-lieux"></datalist>
       </div>
 
       <button id="btn-resoudre" class="btn btn-primary">Résoudre l'itinéraire</button>
@@ -35,18 +40,21 @@
       <div id="statut" class="statut" hidden></div>
 
       <div id="bloc-manuel" class="field" hidden>
-        <label for="distance-manuelle">Destination introuvable : distance aller simple (km)</label>
+        <label for="distance-manuelle">Lieu introuvable — entrez la distance aller simple (km)</label>
         <div class="row">
           <input id="distance-manuelle" type="number" min="0" step="1">
           <button id="btn-distance-manuelle" class="btn">Utiliser cette distance</button>
         </div>
       </div>
 
-      <div class="field mode-clic">
-        <span>Point à placer au prochain clic sur la carte :</span>
-        <label><input type="radio" name="mode-clic" value="origine" checked> Origine</label>
-        <label><input type="radio" name="mode-clic" value="destination"> Destination</label>
-      </div>
+      <details class="details-carte">
+        <summary class="lien-secondaire">Lieu introuvable ? Cliquez directement sur la carte</summary>
+        <div class="field mode-clic">
+          <span>Point à placer au prochain clic :</span>
+          <label><input type="radio" name="mode-clic" value="origine" checked> Origine</label>
+          <label><input type="radio" name="mode-clic" value="destination"> Destination</label>
+        </div>
+      </details>
 
       <div id="carte" class="carte"></div>
 

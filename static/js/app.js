@@ -1,12 +1,16 @@
 (() => {
   "use strict";
 
-  const CI_CENTER = [7.5399, -5.5471];
+  // Côte d'Ivoire — centre et limites géographiques
+  const CI_CENTER = [6.5, -5.5];
+  const CI_BOUNDS = [[4.0, -8.6], [10.8, -2.4]];
 
   const state = {
     distanceKm: null,
     origineMarker: null,
     destinationMarker: null,
+    originePoint: null,      // {lat, lon} résolu (autocomplete ou résolution texte)
+    destinationPoint: null,
     routeLayer: null,
     modeClic: "origine",
     origineTexte: "",
@@ -15,7 +19,12 @@
   };
 
   // ---------------------------------------------------------------- carte
-  const carte = L.map("carte").setView(CI_CENTER, 7);
+  const carte = L.map("carte", {
+    maxBounds: CI_BOUNDS,
+    maxBoundsViscosity: 1.0,
+    minZoom: 6,
+  }).setView(CI_CENTER, 7);
+
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "&copy; OpenStreetMap",
   }).addTo(carte);
@@ -48,11 +57,15 @@
       state.routeLayer = null;
     }
     if (!geometrie) return;
-    state.routeLayer = L.geoJSON(geometrie, { style: { color: "#4fa695", weight: 5, opacity: 0.85 } }).addTo(carte);
+    state.routeLayer = L.geoJSON(geometrie, {
+      style: { color: "#4fa695", weight: 5, opacity: 0.85 },
+    }).addTo(carte);
     carte.fitBounds(state.routeLayer.getBounds(), { padding: [30, 30] });
   }
 
   carte.on("click", (e) => {
+    const pointKey = state.modeClic === "origine" ? "originePoint" : "destinationPoint";
+    state[pointKey] = { lat: e.latlng.lat, lon: e.latlng.lng };
     placerMarqueur(e.latlng, state.modeClic);
   });
 
@@ -61,8 +74,8 @@
   });
 
   function majBoutonsCarte() {
-    const boutonItineraire = document.getElementById("btn-itineraire-carte");
-    boutonItineraire.hidden = !(state.origineMarker && state.destinationMarker);
+    document.getElementById("btn-itineraire-carte").hidden =
+      !(state.origineMarker && state.destinationMarker);
   }
 
   document.getElementById("btn-itineraire-carte").addEventListener("click", async () => {
@@ -108,6 +121,85 @@
     document.getElementById("bloc-manuel").hidden = true;
   }
 
+  // --------------------------------------------------------- autocomplete
+  function setupAutocomplete(inputId, suggestionsId, type) {
+    const input = document.getElementById(inputId);
+    const liste = document.getElementById(suggestionsId);
+    const pointKey = type === "origine" ? "originePoint" : "destinationPoint";
+    const texteKey = type === "origine" ? "origineTexte" : "destinationTexte";
+    let timer;
+
+    input.addEventListener("input", () => {
+      // Désynchronisation : le texte a changé, les coords ne sont plus valides
+      state[pointKey] = null;
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 2) { liste.hidden = true; return; }
+      timer = setTimeout(async () => {
+        const lieux = await appelApi(`/api/lieux?q=${encodeURIComponent(q)}`);
+        if (!Array.isArray(lieux) || !lieux.length) { liste.hidden = true; return; }
+        liste.innerHTML = "";
+        lieux.forEach((l) => {
+          const li = document.createElement("li");
+          li.textContent = l.nom;
+          li.dataset.lat = l.lat;
+          li.dataset.lon = l.lon;
+          liste.appendChild(li);
+        });
+        liste.hidden = false;
+      }, 250);
+    });
+
+    liste.addEventListener("click", (e) => {
+      const li = e.target.closest("li");
+      if (!li) return;
+      const lat = parseFloat(li.dataset.lat);
+      const lon = parseFloat(li.dataset.lon);
+      const nom = li.textContent;
+      input.value = nom;
+      liste.hidden = true;
+      state[pointKey] = { lat, lon };
+      state[texteKey] = nom;
+      placerMarqueur([lat, lon], type);
+      carte.flyTo([lat, lon], 11);
+      // Si les deux points sont connus → calcul automatique
+      if (state.originePoint && state.destinationPoint) {
+        calculerItineraireAuto();
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!input.contains(e.target) && !liste.contains(e.target)) {
+        liste.hidden = true;
+      }
+    });
+  }
+
+  setupAutocomplete("origine", "suggestions-origine", "origine");
+  setupAutocomplete("destination", "suggestions-destination", "destination");
+
+  async function calculerItineraireAuto() {
+    const o = state.originePoint;
+    const d = state.destinationPoint;
+    const reponse = await appelApi("/api/itineraire", {
+      origine: { lat: o.lat, lon: o.lon },
+      destination: { lat: d.lat, lon: d.lon },
+    });
+    if (reponse.statut === "erreur") {
+      afficherStatut("erreur", reponse.message);
+      return;
+    }
+    state.distanceKm = reponse.distance_km;
+    state.statut = "ors";
+    afficherStatut("ors", reponse.message);
+    dessinerItineraire(reponse.geometrie);
+    if (state.origineTexte && state.destinationTexte) {
+      document.getElementById("btn-enregistrer-trajet").hidden = false;
+    }
+    calculerDevis();
+  }
+
+  // ------------------------------------------------------------ résolution texte
   document.getElementById("btn-resoudre").addEventListener("click", async () => {
     const origine = document.getElementById("origine").value.trim();
     const destination = document.getElementById("destination").value.trim();
@@ -134,15 +226,19 @@
     afficherStatut(reponse.statut, reponse.message);
 
     if (reponse.origine_point) {
-      placerMarqueur([reponse.origine_point.lat, reponse.origine_point.lon], "origine");
+      const o = reponse.origine_point;
+      state.originePoint = { lat: o.lat, lon: o.lon };
+      placerMarqueur([o.lat, o.lon], "origine");
     }
     if (reponse.destination_point) {
-      placerMarqueur([reponse.destination_point.lat, reponse.destination_point.lon], "destination");
+      const d = reponse.destination_point;
+      state.destinationPoint = { lat: d.lat, lon: d.lon };
+      placerMarqueur([d.lat, d.lon], "destination");
+      carte.flyTo([d.lat, d.lon], 10);
     }
     dessinerItineraire(reponse.geometrie);
 
     document.getElementById("btn-enregistrer-trajet").hidden = reponse.statut !== "ors";
-
     calculerDevis();
   });
 
@@ -187,7 +283,10 @@
   });
 
   function formaterFcfa(valeur) {
-    return `${valeur.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} F CFA`;
+    return `${valeur.toLocaleString("fr-FR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} F CFA`;
   }
 
   async function calculerDevis() {
@@ -233,19 +332,23 @@
         <dt>TVA (18 %)</dt><dd>${formaterFcfa(r.tva)}</dd>
         <dt>TTC aller-retour</dt><dd>${formaterFcfa(r.ttc_aller_retour)}</dd>
         <dt>TTC après remise</dt><dd>${formaterFcfa(r.ttc_apres_remise)}</dd>
-        <div class="highlight"><span>TTC aller simple</span><span>${formaterFcfa(r.ttc_aller_simple)}</span></div>
+        <div class="highlight">
+          <span>TTC aller simple</span>
+          <span>${formaterFcfa(r.ttc_aller_simple)}</span>
+        </div>
       </dl>
       <table class="table-places">
         <thead><tr><th>Places</th><th>Prix / place (aller simple, sans TVA)</th></tr></thead>
         <tbody>${lignesPlaces}</tbody>
       </table>
-      <p class="muted" style="margin-top:10px;">58 places × 2 (VIP, sans TVA) : ${formaterFcfa(r.prix_par_place_vip_58)}</p>
+      <p class="muted" style="margin-top:10px;">
+        58 places × 2 (VIP, sans TVA) : ${formaterFcfa(r.prix_par_place_vip_58)}
+      </p>
     `;
   }
 
   // ------------------------------------------------------- base de trajets
   let trajetsCache = [];
-
   const corpsTable = document.querySelector("#table-trajets tbody");
 
   corpsTable.addEventListener("click", (e) => {
@@ -269,7 +372,11 @@
         state.statut = "base";
         state.origineTexte = trajet.origine;
         state.destinationTexte = trajet.destination;
-        afficherStatut("base", `Trajet réutilisé : ${trajet.origine} → ${trajet.destination} (${trajet.distance_km} km)`);
+        state.originePoint = null;
+        state.destinationPoint = null;
+        afficherStatut("base",
+          `Trajet réutilisé : ${trajet.origine} → ${trajet.destination} (${trajet.distance_km} km)`
+        );
         calculerDevis();
       }
     }
@@ -277,15 +384,7 @@
 
   async function chargerTrajets() {
     trajetsCache = await appelApi("/api/trajets");
-    remplirDatalist();
     afficherTableTrajets(trajetsCache);
-  }
-
-  function remplirDatalist() {
-    const datalist = document.getElementById("liste-lieux");
-    const lieux = new Set();
-    trajetsCache.forEach((t) => { lieux.add(t.origine); lieux.add(t.destination); });
-    datalist.innerHTML = [...lieux].sort().map((l) => `<option value="${l}">`).join("");
   }
 
   function afficherTableTrajets(trajets) {
