@@ -1,7 +1,6 @@
 (() => {
   "use strict";
 
-  // Côte d'Ivoire — centre et limites géographiques
   const CI_CENTER = [6.5, -5.5];
   const CI_BOUNDS = [[4.0, -8.6], [10.8, -2.4]];
 
@@ -9,14 +8,15 @@
     distanceKm: null,
     origineMarker: null,
     destinationMarker: null,
-    originePoint: null,      // {lat, lon} résolu (autocomplete ou résolution texte)
+    originePoint: null,
     destinationPoint: null,
     routeLayer: null,
-    routeBounds: null,       // L.LatLngBounds du tracé courant
+    routeBounds: null,
     modeClic: "origine",
     origineTexte: "",
     destinationTexte: "",
     statut: null,
+    modeAjoutLieu: false,
   };
 
   // ---------------------------------------------------------------- carte
@@ -24,19 +24,31 @@
     maxBounds: CI_BOUNDS,
     maxBoundsViscosity: 1.0,
     minZoom: 6,
+    maxZoom: 19,
   }).setView(CI_CENTER, 7);
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "&copy; OpenStreetMap",
-  }).addTo(carte);
+  // Fond CartoDB Voyager — plus lisible (noms de rues, détails visuels)
+  L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+      subdomains: "abcd",
+      maxZoom: 19,
+    }
+  ).addTo(carte);
 
-  // Icônes de navigation : pins SVG colorés (vert départ, rouge arrivée)
+  L.control.scale({ imperial: false }).addTo(carte);
+
+  // Icônes pin SVG différenciés (vert départ / rouge arrivée)
   function _creerIconePin(couleur, bordure) {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 42" width="28" height="42">
-      <path d="M14 0C6.27 0 0 6.27 0 14c0 5.26 2.87 9.87 7.13 12.34L14 42l6.87-15.66C25.13 23.87 28 19.26 28 14 28 6.27 21.73 0 14 0z"
-        fill="${couleur}" stroke="${bordure}" stroke-width="1.5"/>
-      <circle cx="14" cy="14" r="6" fill="white" opacity="0.85"/>
-    </svg>`;
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 42" width="28" height="42">` +
+      `<path d="M14 0C6.27 0 0 6.27 0 14c0 5.26 2.87 9.87 7.13 12.34L14 42l6.87-15.66` +
+      `C25.13 23.87 28 19.26 28 14 28 6.27 21.73 0 14 0z"` +
+      ` fill="${couleur}" stroke="${bordure}" stroke-width="1.5"/>` +
+      `<circle cx="14" cy="14" r="6" fill="white" opacity="0.85"/>` +
+      `</svg>`;
     return L.divIcon({
       html: svg,
       className: "",
@@ -46,8 +58,8 @@
     });
   }
 
-  const iconeOrigine      = _creerIconePin("#4caf6d", "#2d7a48");
-  const iconeDestination  = _creerIconePin("#e2574c", "#a83128");
+  const iconeOrigine     = _creerIconePin("#4caf6d", "#2d7a48");
+  const iconeDestination = _creerIconePin("#e2574c", "#a83128");
 
   function placerMarqueur(latlng, type) {
     const icone = type === "origine" ? iconeOrigine : iconeDestination;
@@ -60,14 +72,12 @@
     majBoutonsCarte();
   }
 
-  function dessinerItineraire(geometrie, etapes) {
+  function dessinerItineraire(geometrie) {
     if (state.routeLayer) {
       carte.removeLayer(state.routeLayer);
       state.routeLayer = null;
     }
     state.routeBounds = null;
-    afficherInstructions(etapes || []);
-
     if (!geometrie) {
       document.getElementById("btn-recentrer").hidden = true;
       return;
@@ -80,45 +90,103 @@
     document.getElementById("btn-recentrer").hidden = false;
   }
 
-  // --------------------------------------------------------- bouton recentrer
   document.getElementById("btn-recentrer").addEventListener("click", () => {
-    if (state.routeBounds) {
-      carte.fitBounds(state.routeBounds, { padding: [30, 30] });
-    }
+    if (state.routeBounds) carte.fitBounds(state.routeBounds, { padding: [30, 30] });
   });
 
-  // ------------------------------------------------------ instructions turn-by-turn
-  function afficherInstructions(etapes) {
-    const panneau = document.getElementById("panneau-instructions");
-    const liste   = document.getElementById("liste-instructions");
-    if (!etapes || !etapes.length) {
-      panneau.hidden = true;
-      liste.innerHTML = "";
-      return;
-    }
-    liste.innerHTML = etapes.map((e) => {
-      const dist = e.distance_m >= 1000
-        ? `${(e.distance_m / 1000).toFixed(1)} km`
-        : `${Math.round(e.distance_m)} m`;
-      const duree = e.duree_s >= 60
-        ? `${Math.round(e.duree_s / 60)} min`
-        : `${Math.round(e.duree_s)} s`;
-      const li = document.createElement("li");
-      li.className = "instruction-step";
-      const texte = document.createElement("span");
-      texte.className = "inst-texte";
-      texte.textContent = e.instruction;
-      const meta = document.createElement("span");
-      meta.className = "inst-meta";
-      meta.textContent = `${dist} · ${duree}`;
-      li.appendChild(texte);
-      li.appendChild(meta);
-      return li.outerHTML;
-    }).join("");
-    panneau.hidden = false;
+  // -------------------------------------------------------- mode ajout de lieu
+  const btnAjouterLieu  = document.getElementById("btn-ajouter-lieu");
+  const bandeauAjout    = document.getElementById("bandeau-ajout-lieu");
+
+  function activerModeAjout() {
+    state.modeAjoutLieu = true;
+    carte.getContainer().classList.add("mode-ajout-active");
+    bandeauAjout.hidden = false;
+    btnAjouterLieu.classList.add("btn-primary");
+    btnAjouterLieu.textContent = "✕ Annuler";
   }
 
+  function desactiverModeAjout() {
+    state.modeAjoutLieu = false;
+    carte.getContainer().classList.remove("mode-ajout-active");
+    bandeauAjout.hidden = true;
+    btnAjouterLieu.classList.remove("btn-primary");
+    btnAjouterLieu.textContent = "+ Ajouter un lieu";
+    carte.closePopup();
+  }
+
+  btnAjouterLieu.addEventListener("click", () => {
+    if (state.modeAjoutLieu) desactiverModeAjout();
+    else activerModeAjout();
+  });
+
+  function ouvrirPopupAjoutLieu(latlng) {
+    const container = document.createElement("div");
+    container.className = "popup-ajout";
+
+    const label = document.createElement("p");
+    label.textContent = "Nom du lieu :";
+    container.appendChild(label);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Ex : Carrefour du marché";
+    input.className = "popup-input";
+    container.appendChild(input);
+
+    const actions = document.createElement("div");
+    actions.className = "popup-actions";
+
+    const btnSave = document.createElement("button");
+    btnSave.textContent = "Enregistrer";
+    btnSave.className = "btn btn-primary btn-sm";
+
+    const btnCancel = document.createElement("button");
+    btnCancel.textContent = "Annuler";
+    btnCancel.className = "btn btn-sm";
+
+    actions.appendChild(btnSave);
+    actions.appendChild(btnCancel);
+    container.appendChild(actions);
+
+    L.popup({ closeButton: false, closeOnClick: false })
+      .setLatLng(latlng)
+      .setContent(container)
+      .openOn(carte);
+
+    setTimeout(() => input.focus(), 50);
+
+    // Empêcher les clics dans la popup de propager à la carte
+    L.DomEvent.on(container, "click", L.DomEvent.stopPropagation);
+
+    L.DomEvent.on(input, "keydown", (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (e.key === "Enter") btnSave.click();
+      if (e.key === "Escape") desactiverModeAjout();
+    });
+
+    btnSave.addEventListener("click", async () => {
+      const nom = input.value.trim();
+      if (!nom) { input.focus(); return; }
+      await appelApi("/api/lieu", { nom, lat: latlng.lat, lon: latlng.lng }, "POST");
+      carte.closePopup();
+      L.marker([latlng.lat, latlng.lng], { title: nom })
+        .addTo(carte)
+        .bindPopup(`<strong>${nom}</strong><br><em>Lieu ajouté</em>`)
+        .openPopup();
+      desactiverModeAjout();
+    });
+
+    btnCancel.addEventListener("click", () => desactiverModeAjout());
+  }
+
+  // -------------------------------------------------------- clic sur la carte
   carte.on("click", (e) => {
+    if (state.modeAjoutLieu) {
+      ouvrirPopupAjoutLieu(e.latlng);
+      return;
+    }
+    // Mode résolution de trajet (secondaire, dans le <details>)
     const pointKey = state.modeClic === "origine" ? "originePoint" : "destinationPoint";
     state[pointKey] = { lat: e.latlng.lat, lon: e.latlng.lng };
     placerMarqueur(e.latlng, state.modeClic);
@@ -137,17 +205,14 @@
     const o = state.origineMarker.getLatLng();
     const d = state.destinationMarker.getLatLng();
     const reponse = await appelApi("/api/itineraire", {
-      origine:      { lat: o.lat, lon: o.lng },
-      destination:  { lat: d.lat, lon: d.lng },
+      origine:     { lat: o.lat, lon: o.lng },
+      destination: { lat: d.lat, lon: d.lng },
     });
-    if (reponse.statut === "erreur") {
-      afficherStatut("erreur", reponse.message);
-      return;
-    }
+    if (reponse.statut === "erreur") { afficherStatut("erreur", reponse.message); return; }
     state.distanceKm = reponse.distance_km;
     state.statut = "ors";
     afficherStatut("ors", reponse.message);
-    dessinerItineraire(reponse.geometrie, reponse.etapes);
+    dessinerItineraire(reponse.geometrie);
     document.getElementById("btn-enregistrer-trajet").hidden = false;
     calculerDevis();
   });
@@ -182,27 +247,51 @@
     const liste    = document.getElementById(suggestionsId);
     const pointKey = type === "origine" ? "originePoint" : "destinationPoint";
     const texteKey = type === "origine" ? "origineTexte" : "destinationTexte";
-    let timer;
+    let timerLocal, timerOnline;
+
+    function ajouterSuggestions(lieux, online) {
+      if (!online) liste.innerHTML = "";
+      lieux.forEach((l) => {
+        const li = document.createElement("li");
+        li.dataset.lat = l.lat;
+        li.dataset.lon = l.lon;
+        li.dataset.nom = l.nom;
+        const texte = document.createTextNode(l.nom);
+        li.appendChild(texte);
+        if (online) {
+          li.classList.add("suggestion-online");
+          const tag = document.createElement("span");
+          tag.className = "tag-online";
+          tag.textContent = "en ligne";
+          li.appendChild(tag);
+        }
+        liste.appendChild(li);
+      });
+      liste.hidden = liste.children.length === 0;
+    }
 
     input.addEventListener("input", () => {
-      // Désynchronisation : le texte a changé, les coords ne sont plus valides
       state[pointKey] = null;
-      clearTimeout(timer);
+      clearTimeout(timerLocal);
+      clearTimeout(timerOnline);
       const q = input.value.trim();
-      if (q.length < 2) { liste.hidden = true; return; }
-      timer = setTimeout(async () => {
+      if (q.length < 2) { liste.innerHTML = ""; liste.hidden = true; return; }
+
+      timerLocal = setTimeout(async () => {
         const lieux = await appelApi(`/api/lieux?q=${encodeURIComponent(q)}`);
-        if (!Array.isArray(lieux) || !lieux.length) { liste.hidden = true; return; }
-        liste.innerHTML = "";
-        lieux.forEach((l) => {
-          const li = document.createElement("li");
-          li.textContent = l.nom;
-          li.dataset.lat = l.lat;
-          li.dataset.lon = l.lon;
-          liste.appendChild(li);
-        });
-        liste.hidden = false;
-      }, 250);
+        if (!Array.isArray(lieux)) { liste.hidden = true; return; }
+        ajouterSuggestions(lieux, false);
+
+        // Complément en ligne si peu de résultats locaux
+        if (lieux.length < 3 && q.length >= 3) {
+          timerOnline = setTimeout(async () => {
+            const online = await appelApi(`/api/geocoder?q=${encodeURIComponent(q)}`);
+            if (Array.isArray(online) && online.length > 0) {
+              ajouterSuggestions(online, true);
+            }
+          }, 500);
+        }
+      }, 200);
     });
 
     liste.addEventListener("click", (e) => {
@@ -210,22 +299,23 @@
       if (!li) return;
       const lat = parseFloat(li.dataset.lat);
       const lon = parseFloat(li.dataset.lon);
-      const nom = li.textContent;
+      const nom = li.dataset.nom;
       input.value = nom;
+      liste.innerHTML = "";
       liste.hidden = true;
+      clearTimeout(timerOnline);
       state[pointKey] = { lat, lon };
       state[texteKey] = nom;
       placerMarqueur([lat, lon], type);
       carte.flyTo([lat, lon], 11);
-      // Si les deux points sont connus → calcul automatique
-      if (state.originePoint && state.destinationPoint) {
-        calculerItineraireAuto();
-      }
+      if (state.originePoint && state.destinationPoint) calculerItineraireAuto();
     });
 
     document.addEventListener("click", (e) => {
       if (!input.contains(e.target) && !liste.contains(e.target)) {
+        liste.innerHTML = "";
         liste.hidden = true;
+        clearTimeout(timerOnline);
       }
     });
   }
@@ -240,14 +330,11 @@
       origine:     { lat: o.lat, lon: o.lon },
       destination: { lat: d.lat, lon: d.lon },
     });
-    if (reponse.statut === "erreur") {
-      afficherStatut("erreur", reponse.message);
-      return;
-    }
+    if (reponse.statut === "erreur") { afficherStatut("erreur", reponse.message); return; }
     state.distanceKm = reponse.distance_km;
     state.statut = "ors";
     afficherStatut("ors", reponse.message);
-    dessinerItineraire(reponse.geometrie, reponse.etapes);
+    dessinerItineraire(reponse.geometrie);
     if (state.origineTexte && state.destinationTexte) {
       document.getElementById("btn-enregistrer-trajet").hidden = false;
     }
@@ -291,8 +378,7 @@
       placerMarqueur([d.lat, d.lon], "destination");
       carte.flyTo([d.lat, d.lon], 10);
     }
-    dessinerItineraire(reponse.geometrie, reponse.etapes);
-
+    dessinerItineraire(reponse.geometrie);
     document.getElementById("btn-enregistrer-trajet").hidden = reponse.statut !== "ors";
     calculerDevis();
   });
@@ -352,15 +438,15 @@
     }
 
     const corps = {
-      distance_km:      state.distanceKm,
-      nb_places:        parseInt(document.getElementById("nb-places").value, 10) || 63,
-      conso_100km:      parseFloat(document.getElementById("conso-100km").value) || 0,
-      prix_litre:       parseFloat(document.getElementById("prix-litre").value) || 0,
-      frais_chauffeur:  parseFloat(document.getElementById("frais-chauffeur").value) || 0,
-      frais_convoyeur:  parseFloat(document.getElementById("frais-convoyeur").value) || 0,
-      peage:            parseFloat(document.getElementById("peage").value) || 0,
-      marge_pct:        parseFloat(document.getElementById("marge-pct").value) || 0,
-      remise_montant:   parseFloat(document.getElementById("remise-montant").value) || 0,
+      distance_km:     state.distanceKm,
+      nb_places:       parseInt(document.getElementById("nb-places").value, 10) || 63,
+      conso_100km:     parseFloat(document.getElementById("conso-100km").value) || 0,
+      prix_litre:      parseFloat(document.getElementById("prix-litre").value) || 0,
+      frais_chauffeur: parseFloat(document.getElementById("frais-chauffeur").value) || 0,
+      frais_convoyeur: parseFloat(document.getElementById("frais-convoyeur").value) || 0,
+      peage:           parseFloat(document.getElementById("peage").value) || 0,
+      marge_pct:       parseFloat(document.getElementById("marge-pct").value) || 0,
+      remise_montant:  parseFloat(document.getElementById("remise-montant").value) || 0,
     };
 
     const r = await appelApi("/api/devis", corps);
@@ -406,7 +492,20 @@
   let trajetsCache = [];
   const corpsTable = document.querySelector("#table-trajets tbody");
 
-  corpsTable.addEventListener("click", (e) => {
+  // Délégation d'événements : un seul écouteur gère modifier ET supprimer
+  corpsTable.addEventListener("click", async (e) => {
+    // Bouton supprimer (ligne directe)
+    const btnDel = e.target.closest(".btn-delete");
+    if (btnDel) {
+      e.stopPropagation();
+      const id = parseInt(btnDel.dataset.id, 10);
+      if (!confirm("Supprimer ce trajet définitivement ?")) return;
+      await appelApi(`/api/trajet/${id}`, null, "DELETE");
+      await chargerTrajets();
+      return;
+    }
+
+    // Bouton modifier → ouvre la modal
     const btnEdit = e.target.closest(".btn-edit");
     if (btnEdit) {
       e.stopPropagation();
@@ -415,6 +514,8 @@
       if (trajet) ouvrirModalEdition(trajet);
       return;
     }
+
+    // Clic sur la ligne → remplit les champs et calcule le devis
     const tr = e.target.closest("tr[data-id]");
     if (tr) {
       const id = parseInt(tr.dataset.id, 10);
@@ -423,11 +524,11 @@
       document.getElementById("origine").value     = trajet.origine;
       document.getElementById("destination").value = trajet.destination;
       if (trajet.distance_km) {
-        state.distanceKm     = trajet.distance_km;
-        state.statut         = "base";
-        state.origineTexte   = trajet.origine;
+        state.distanceKm       = trajet.distance_km;
+        state.statut           = "base";
+        state.origineTexte     = trajet.origine;
         state.destinationTexte = trajet.destination;
-        state.originePoint   = null;
+        state.originePoint     = null;
         state.destinationPoint = null;
         afficherStatut("base",
           `Trajet réutilisé : ${trajet.origine} → ${trajet.destination} (${trajet.distance_km} km)`
@@ -452,6 +553,7 @@
         <td>${t.source}</td>
         <td class="col-actions">
           <button class="btn btn-sm btn-edit" data-id="${t.id}">Modifier</button>
+          <button class="btn btn-sm btn-danger btn-delete" data-id="${t.id}">✕</button>
         </td>
       </tr>`).join("");
   }
@@ -482,9 +584,9 @@
     const id = parseInt(document.getElementById("edit-id").value, 10);
     const distanceVal = document.getElementById("edit-distance").value;
     const corps = {
-      origine:      document.getElementById("edit-origine").value.trim(),
-      destination:  document.getElementById("edit-destination").value.trim(),
-      distance_km:  distanceVal !== "" ? parseFloat(distanceVal) : null,
+      origine:       document.getElementById("edit-origine").value.trim(),
+      destination:   document.getElementById("edit-destination").value.trim(),
+      distance_km:   distanceVal !== "" ? parseFloat(distanceVal) : null,
       montant_aller: document.getElementById("edit-montant").value.trim() || null,
     };
     if (!corps.origine || !corps.destination) return;

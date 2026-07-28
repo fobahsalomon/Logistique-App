@@ -92,6 +92,35 @@ def api_enregistrer_lieu():
     return jsonify({"id": lieu_id}), 201
 
 
+@app.get("/api/geocoder")
+def api_geocoder():
+    """Géocodage en ligne (Nominatim → Overpass) pour complémenter l'autocomplétion locale."""
+    q = request.args.get("q", "").strip()
+    if len(q) < 3:
+        return jsonify([])
+
+    from core.routing import _geocoder_nominatim, RoutingError
+    from core.osm_overpass import geocoder_overpass
+
+    # 1. Nominatim
+    try:
+        point = _geocoder_nominatim(q)
+        if point:
+            inserer_lieu(nom=q, lat=point.lat, lon=point.lon, source="nominatim")
+            label = point.label.split(",")[0].strip()
+            return jsonify([{"nom": label, "lat": point.lat, "lon": point.lon, "source": "online"}])
+    except RoutingError:
+        pass
+
+    # 2. Overpass
+    result = geocoder_overpass(q)
+    if result:
+        inserer_lieu(nom=q, lat=result["lat"], lon=result["lon"], source="overpass")
+        return jsonify([{"nom": result["label"], "lat": result["lat"], "lon": result["lon"], "source": "online"}])
+
+    return jsonify([])
+
+
 @app.post("/api/resoudre")
 def api_resoudre():
     payload = request.get_json(force=True) or {}
@@ -113,7 +142,6 @@ def api_resoudre():
             "origine_point": None,
             "destination_point": None,
             "geometrie": None,
-            "etapes": [],
         })
 
     try:
@@ -135,7 +163,6 @@ def api_resoudre():
         "origine_point": {"lat": o.lat, "lon": o.lon, "label": o.label},
         "destination_point": {"lat": d.lat, "lon": d.lon, "label": d.label},
         "geometrie": itineraire.geometrie,
-        "etapes": itineraire.etapes,
     })
 
 
@@ -164,7 +191,6 @@ def api_itineraire():
         "duree_min": duree_min,
         "message": f"Itinéraire calculé : {distance_km} km, ~{duree_min} min",
         "geometrie": itineraire.geometrie,
-        "etapes": itineraire.etapes,
     })
 
 

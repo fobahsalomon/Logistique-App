@@ -35,7 +35,14 @@
         </div>
       </div>
 
-      <button id="btn-resoudre" class="btn btn-primary">Résoudre l'itinéraire</button>
+      <div class="row-resolve">
+        <button id="btn-resoudre" class="btn btn-primary">Résoudre l'itinéraire</button>
+        <button id="btn-ajouter-lieu" class="btn btn-sm">+ Ajouter un lieu</button>
+      </div>
+
+      <div id="bandeau-ajout-lieu" class="bandeau-ajout" hidden>
+        Cliquez sur la carte à l'endroit du nouveau lieu
+      </div>
 
       <div id="statut" class="statut" hidden></div>
 
@@ -65,11 +72,6 @@
         </div>
         <button id="btn-recentrer" class="btn btn-sm" hidden title="Recentrer la carte sur l'itinéraire">⟲ Recentrer</button>
       </div>
-
-      <details id="panneau-instructions" hidden>
-        <summary class="lien-secondaire">Instructions de navigation</summary>
-        <ol id="liste-instructions" class="instructions-liste"></ol>
-      </details>
     </section>
 
     <section class="panel panel-side">

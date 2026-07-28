@@ -282,41 +282,52 @@ dialog.modal h3 { margin: 0 0 20px; font-size: 16px; font-weight: 600; }
   align-items: center;
 }
 
-/* -------------------------------------------------------- panneau instructions */
-#panneau-instructions {
-  margin-top: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-#panneau-instructions > summary {
-  padding: 10px 14px;
-  background: var(--panel-alt);
-  list-style: none;
-  margin-bottom: 0;
-}
-#panneau-instructions > summary::-webkit-details-marker { display: none; }
-#panneau-instructions[open] > summary {
-  border-bottom: 1px solid var(--line);
-}
-
-.instructions-liste {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  max-height: 280px;
-  overflow-y: auto;
-}
-
-.instruction-step {
+/* -------------------------------------------------------- bouton résoudre + ajouter */
+.row-resolve {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--line);
-  font-size: 13px;
+  align-items: center;
+  margin-bottom: 14px;
+  gap: 10px;
 }
-.instruction-step:last-child { border-bottom: none; }
-.inst-texte { color: var(--text); }
-.inst-meta  { color: var(--text-muted); white-space: nowrap; font-size: 11px; }
+
+/* -------------------------------------------------------- mode ajout de lieu */
+.bandeau-ajout {
+  background: rgba(242, 183, 5, 0.12);
+  border: 1px solid var(--yellow);
+  color: var(--yellow);
+  padding: 9px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+#carte.mode-ajout-active { cursor: crosshair; }
+
+/* -------------------------------------------------------- popup ajout lieu */
+.popup-ajout { min-width: 210px; padding: 2px 0; }
+.popup-ajout p { margin: 0 0 8px; font-size: 13px; color: #333; font-weight: 600; }
+.popup-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+.popup-actions { display: flex; gap: 6px; }
+
+/* -------------------------------------------------------- autocomplete source */
+.suggestion-online { color: var(--text-muted); }
+.tag-online {
+  margin-left: 8px;
+  font-size: 10px;
+  background: rgba(79, 166, 149, 0.2);
+  color: var(--teal);
+  border: 1px solid var(--teal);
+  border-radius: 3px;
+  padding: 1px 5px;
+  vertical-align: middle;
+}

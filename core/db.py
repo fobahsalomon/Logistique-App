@@ -193,25 +193,57 @@ def rechercher_lieu(texte: str, conn: sqlite3.Connection | None = None) -> sqlit
 
 
 def rechercher_lieux(
-    texte: str, limit: int = 10, conn: sqlite3.Connection | None = None
+    texte: str, limit: int = 8, conn: sqlite3.Connection | None = None
 ) -> list[sqlite3.Row]:
-    """Recherche pour l'autocomplétion — préfixe en priorité, puis inclusion."""
+    """Recherche pour l'autocomplétion — scoring rapidfuzz avec fallback SQL LIKE."""
     t = normaliser(texte)
     if not t or len(t) < 2:
         return []
     close = conn is None
     conn = conn or get_connection()
-    rows = conn.execute(
-        """SELECT * FROM lieux_connus
-           WHERE nom_normalise LIKE ?
-           ORDER BY CASE WHEN nom_normalise LIKE ? THEN 0 ELSE 1 END,
-                    LENGTH(nom)
-           LIMIT ?""",
-        (f"%{t}%", f"{t}%", limit),
-    ).fetchall()
-    if close:
-        conn.close()
-    return rows
+
+    try:
+        from rapidfuzz import fuzz, process as rfprocess
+
+        # Étape 1 : candidats par sous-chaîne SQL (rapide, ≤50 entrées)
+        candidates = conn.execute(
+            "SELECT * FROM lieux_connus WHERE nom_normalise LIKE ? LIMIT 50",
+            (f"%{t}%",),
+        ).fetchall()
+
+        # Étape 2 : si peu de résultats et requête suffisamment longue,
+        # faire un scan rapide complet avec rapidfuzz pour tolérer les fautes
+        if len(candidates) < 3 and len(t) >= 3:
+            all_rows = conn.execute("SELECT * FROM lieux_connus").fetchall()
+            names = [r["nom_normalise"] for r in all_rows]
+            fuzzy = rfprocess.extract(t, names, scorer=fuzz.WRatio, limit=20, score_cutoff=60)
+            seen = {r["id"] for r in candidates}
+            for _, _, idx in fuzzy:
+                r = all_rows[idx]
+                if r["id"] not in seen:
+                    candidates.append(r)
+                    seen.add(r["id"])
+
+        if close:
+            conn.close()
+
+        scored = [(r, fuzz.WRatio(t, r["nom_normalise"])) for r in candidates]
+        scored.sort(key=lambda x: -x[1])
+        return [r for r, _ in scored[:limit]]
+
+    except ImportError:
+        # Fallback sans rapidfuzz
+        rows = conn.execute(
+            """SELECT * FROM lieux_connus
+               WHERE nom_normalise LIKE ?
+               ORDER BY CASE WHEN nom_normalise LIKE ? THEN 0 ELSE 1 END,
+                        LENGTH(nom)
+               LIMIT ?""",
+            (f"%{t}%", f"{t}%", limit),
+        ).fetchall()
+        if close:
+            conn.close()
+        return rows
 
 
 def inserer_lieu(

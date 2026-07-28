@@ -139,3 +139,15 @@ def test_lieu_idempotent(client):
     l = rechercher_lieu("Yamoussoukro")
     assert l is not None
     assert l["nom"] == "Yamoussoukro"
+
+
+def test_supprimer_trajet_inexistant(client):
+    rep = client.delete("/api/trajet/99999")
+    assert rep.status_code == 404
+
+
+def test_geocoder_requete_courte(client):
+    # Requête < 3 caractères → retourne immédiatement sans appel réseau
+    rep = client.get("/api/geocoder?q=ab")
+    assert rep.status_code == 200
+    assert rep.get_json() == []
