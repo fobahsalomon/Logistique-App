@@ -119,4 +119,4 @@ propre à CA TRANS, reproduction fidèle de l'Excel d'origine. Ne pas modifier.
 
 - GitHub : [@fobahsalomon](https://github.com/fobahsalomon)
 - Email : fobahngouansalomon@gmail.com
-- Portfolio : lien à venir
+- Portfolio : [fobahsalomon.github.io/portfolio](https://fobahsalomon.github.io/portfolio)
