@@ -387,9 +387,9 @@
       const q = input.value.trim();
       if (q.length < 2) { liste.innerHTML = ""; liste.hidden = true; return; }
 
-      const delai = modeRecherche === "adresse" ? 250 : 200;
+      const delai = state.modeRecherche === "adresse" ? 250 : 200;
       timerLocal = setTimeout(async () => {
-        if (modeRecherche === "adresse") {
+        if (state.modeRecherche === "adresse") {
           const online = await appelApi(`/api/adresses?q=${encodeURIComponent(q)}`);
           if (Array.isArray(online) && online.length > 0) {
             ajouterSuggestions(online, true);
@@ -475,10 +475,10 @@
 
   // ------------------------------------------------------------ résolution texte
   document.getElementById("btn-resoudre").addEventListener("click", async () => {
-    const inputOrigine     = modeRecherche === "adresse"
+    const inputOrigine     = state.modeRecherche === "adresse"
       ? document.getElementById("origine-adresse")
       : document.getElementById("origine");
-    const inputDestination = modeRecherche === "adresse"
+    const inputDestination = state.modeRecherche === "adresse"
       ? document.getElementById("destination-adresse")
       : document.getElementById("destination");
     const origine     = (inputOrigine.value || "").trim();
