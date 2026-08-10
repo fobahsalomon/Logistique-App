@@ -24,18 +24,49 @@
     maxBounds: CI_BOUNDS,
     maxBoundsViscosity: 1.0,
     minZoom: 6,
-    maxZoom: 19,
+    maxZoom: 21, // overzoom au-delà de la résolution native des tuiles (usage perso, non commercial)
   }).setView(CI_CENTER, 7);
 
   // Fond CartoDB Voyager — plus lisible (noms de rues, détails visuels)
-  L.tileLayer(
+  const fondVoyager = L.tileLayer(
     "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
     {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
       subdomains: "abcd",
-      maxZoom: 19,
+      maxZoom: 21,
+      maxNativeZoom: 20,
     }
+  ).addTo(carte);
+
+  // Fond OSM standard — alternative, plus dense en petites routes/pistes
+  const fondOsm = L.tileLayer(
+    "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 21,
+      maxNativeZoom: 19,
+    }
+  );
+
+  // Imagerie satellite ESRI — usage non commercial autorisé, utile pour valider les tracés
+  const fondSatellite = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    {
+      attribution: "Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics",
+      maxZoom: 21,
+      maxNativeZoom: 19,
+    }
+  );
+
+  L.control.layers(
+    {
+      "Voyager (CartoDB)": fondVoyager,
+      "OpenStreetMap": fondOsm,
+      "Satellite (ESRI)": fondSatellite,
+    },
+    {},
+    { position: "topright", collapsed: true }
   ).addTo(carte);
 
   L.control.scale({ imperial: false }).addTo(carte);
