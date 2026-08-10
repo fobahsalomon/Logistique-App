@@ -70,6 +70,50 @@ def _geocoder_nominatim(texte: str) -> PointGeocode | None:
         raise RoutingError(f"Géocodage échoué pour « {texte} » : {exc}") from exc
 
 
+def _geocoder_nominatim_multi(texte: str, limit: int = 8) -> list[PointGeocode]:
+    """Interroge Nominatim et garde les résultats qui ressemblent à des adresses.
+
+    Filtre sur les types OSM utiles pour des rues, numéros, quartiers ou
+    intersections en Côte d'Ivoire. Le respect de la limite 1 req/s est
+    conservé via le même verrou global que `_geocoder_nominatim`.
+    """
+    global _last_nominatim_call
+    elapsed = time.time() - _last_nominatim_call
+    if elapsed < 1.1:
+        time.sleep(1.1 - elapsed)
+    types_adresse = {
+        "house", "street", "residential", "commercial", "road",
+        "neighbourhood", "quarter", "suburb", "city", "town", "village",
+        "hamlet", "isolated_dwelling",
+    }
+    try:
+        rep = requests.get(
+            f"{NOMINATIM_BASE}/search",
+            params={"q": texte, "format": "json", "limit": limit,
+                    "countrycodes": "ci", "accept-language": "fr",
+                    "addressdetails": 1},
+            headers={"User-Agent": _UA},
+            timeout=10,
+        )
+        _last_nominatim_call = time.time()
+        rep.raise_for_status()
+        data = rep.json()
+        resultats: list[PointGeocode] = []
+        for r in data:
+            type_osm = r.get("type", "")
+            adresse = r.get("display_name", "")
+            if type_osm not in types_adresse:
+                continue
+            resultats.append(PointGeocode(
+                lat=float(r["lat"]),
+                lon=float(r["lon"]),
+                label=adresse,
+            ))
+        return resultats
+    except Exception:
+        return []
+
+
 def geocoder(client, texte: str) -> PointGeocode | None:
     """Résout un lieu : base locale → Nominatim → Overpass (avec sauvegarde auto)."""
     from core.db import inserer_lieu, rechercher_lieu

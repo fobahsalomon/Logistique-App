@@ -236,8 +236,8 @@
     const o = state.origineMarker.getLatLng();
     const d = state.destinationMarker.getLatLng();
     const reponse = await appelApi("/api/itineraire", {
-      origine:     { lat: o.lat, lon: o.lng },
-      destination: { lat: d.lat, lon: d.lng },
+      origine:     { lat: o.lat, lon: o.lon },
+      destination: { lat: d.lat, lon: d.lon },
     });
     if (reponse.statut === "erreur") { afficherStatut("erreur", reponse.message); return; }
     state.distanceKm = reponse.distance_km;
@@ -345,7 +345,8 @@
         // Complément en ligne si peu de résultats locaux
         if (lieux.length < 3 && q.length >= 3) {
           timerOnline = setTimeout(async () => {
-            const online = await appelApi(`/api/geocoder?q=${encodeURIComponent(q)}`);
+            const source = modeRecherche === "adresse" ? "/api/adresses" : "/api/geocoder";
+            const online = await appelApi(`${source}?q=${encodeURIComponent(q)}`);
             if (Array.isArray(online) && online.length > 0) {
               ajouterSuggestions(online, true);
             }
@@ -396,8 +397,8 @@
     const o = state.originePoint;
     const d = state.destinationPoint;
     const reponse = await appelApi("/api/itineraire", {
-      origine:     { lat: o.lat, lon: o.lng },
-      destination: { lat: d.lat, lon: d.lng },
+      origine:     { lat: o.lat, lon: o.lon },
+      destination: { lat: d.lat, lon: d.lon },
     });
     if (reponse.statut === "erreur") { afficherStatut("erreur", reponse.message); return; }
     state.distanceKm = reponse.distance_km;
@@ -412,8 +413,14 @@
 
   // ------------------------------------------------------------ résolution texte
   document.getElementById("btn-resoudre").addEventListener("click", async () => {
-    const origine     = document.getElementById("origine").value.trim();
-    const destination = document.getElementById("destination").value.trim();
+    const inputOrigine     = modeRecherche === "adresse"
+      ? document.getElementById("origine-adresse")
+      : document.getElementById("origine");
+    const inputDestination = modeRecherche === "adresse"
+      ? document.getElementById("destination-adresse")
+      : document.getElementById("destination");
+    const origine     = (inputOrigine.value || "").trim();
+    const destination = (inputDestination.value || "").trim();
     state.origineTexte     = origine;
     state.destinationTexte = destination;
 
@@ -439,11 +446,15 @@
     if (reponse.origine_point) {
       const o = reponse.origine_point;
       state.originePoint = { lat: o.lat, lon: o.lon };
+      state.origineTexte = o.label || origine;
+      inputOrigine.value = state.origineTexte;
       placerMarqueur([o.lat, o.lon], "origine");
     }
     if (reponse.destination_point) {
       const d = reponse.destination_point;
       state.destinationPoint = { lat: d.lat, lon: d.lon };
+      state.destinationTexte = d.label || destination;
+      inputDestination.value = state.destinationTexte;
       placerMarqueur([d.lat, d.lon], "destination");
       carte.flyTo([d.lat, d.lon], 10);
     }

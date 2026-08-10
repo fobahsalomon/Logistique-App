@@ -22,7 +22,7 @@ from core.db import (
 from core.devis_pdf import generer_pdf_devis
 from core.devis_service import DevisValidationError, devis_input_from_payload, serialiser_devis
 from core.pricing import calculer_devis, frais_mission_defaut
-from core.routing import RoutingError, calculer_itineraire, get_client, resoudre_itineraire
+from core.routing import RoutingError, _geocoder_nominatim, _geocoder_nominatim_multi, calculer_itineraire, get_client, resoudre_itineraire
 from data.seed_trajets import seed as seed_trajets
 
 try:
@@ -81,44 +81,26 @@ def api_lieux():
     ])
 
 
-@app.get("/api/pada")
-def api_pada():
-    """Recherche d'adresses PADA (rues, numéros, quartiers)."""
+@app.get("/api/adresses")
+def api_adresses():
+    """Recherche d'adresses et de rues via Nominatim, focalisée sur la CI."""
     q = request.args.get("q", "").strip()
     if len(q) < 3:
         return jsonify([])
 
     try:
-        # PADA utilise Nominatim avec un focus sur les adresses en CI
-        rep = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": q,
-                "format": "json",
-                "limit": 8,
-                "countrycodes": "ci",
-                "accept-language": "fr",
-                "addressdetails": 1,
-            },
-            headers={"User-Agent": _UA},
-            timeout=10,
-        )
-        rep.raise_for_status()
-        data = rep.json()
-        resultats = []
-        for r in data:
-            adresse = r.get("display_name", "")
-            # Prioriser les résultats qui contiennent des numéros ou des types de rue
-            type_rue = r.get("type", "")
-            if type_rue in ("house", "street", "residential", "commercial", "road"):
-                resultats.append({
-                    "label": adresse,
-                    "lat": float(r["lat"]),
-                    "lon": float(r["lon"]),
-                })
-        return jsonify(resultats[:8])
+        points = _geocoder_nominatim_multi(q, limit=8)
     except Exception:
         return jsonify([])
+
+    return jsonify([
+        {
+            "label": p.label,
+            "lat": p.lat,
+            "lon": p.lon,
+        }
+        for p in points[:8]
+    ])
 
 
 @app.post("/api/lieu")

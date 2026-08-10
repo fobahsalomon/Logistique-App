@@ -32,6 +32,8 @@ def test_page_accueil(client):
     assert b"CA TRANS" in rep.data
     assert b"btn-calculer-devis" in rep.data
     assert b"btn-telecharger-pdf" in rep.data
+    assert b"btn-mode-active" in rep.data
+    assert b"Adresses / Rues" in rep.data
     assert b"Portfolio" in rep.data
 
 
@@ -198,5 +200,17 @@ def test_supprimer_trajet_inexistant(client):
 
 def test_geocoder_requete_courte(client):
     rep = client.get("/api/geocoder?q=ab")
+    assert rep.status_code == 200
+    assert rep.get_json() == []
+
+
+def test_adresses_resultats_courtes(client):
+    rep = client.get("/api/adresses?q=ab")
+    assert rep.status_code == 200
+    assert rep.get_json() == []
+
+
+def test_adresses_aucun_resultat(client):
+    rep = client.get("/api/adresses?q=zzzzzz-inconnu-xxxx")
     assert rep.status_code == 200
     assert rep.get_json() == []
