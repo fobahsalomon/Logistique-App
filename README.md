@@ -87,10 +87,12 @@ et l'autocomplétion.
 1. Poussez sur GitHub et connectez le dépôt sur [Render](https://render.com).
 2. Render détecte `render.yaml` automatiquement (build : `pip install -r
    requirements.txt`, start : `gunicorn app:app`).
-3. La base SQLite est recréée à chaque redéploiement (système de fichiers
-   éphémère sur le plan gratuit). `app.py` réinsère les 70 trajets au
-   démarrage. Lancez `import_geonames.py` et `import_osm.py` manuellement
-   via la console Render si nécessaire, ou passez à un disque persistant.
+3. La base SQLite (`data/ca_trans.db`, avec les 70 trajets connus + ~35 000
+   lieux GeoNames/OSM déjà importés) est **committée dans le repo** pour
+   survivre au système de fichiers éphémère du plan gratuit Render. Toute
+   modification faite en production (nouveaux trajets, lieux ajoutés au clic)
+   sera donc perdue au prochain redéploiement, sauf à re-committer la base
+   mise à jour ou à passer à un disque persistant Render.
 
 ## Note importante sur le moteur de calcul
 
