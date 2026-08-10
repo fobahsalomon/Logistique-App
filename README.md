@@ -20,15 +20,21 @@ Interface 100 % custom (HTML/CSS/JS + Leaflet) — aucun framework de dashboard.
 - **Instructions de navigation** turn-by-turn (French) pliables sous la carte
 - **Base de 70 trajets connus** avec édition/suppression via modal
 - **Moteur de devis** : carburant × 4, frais de mission, TVA 18 %, prix par place
+- **Devis PDF** : génération serveur via ReportLab, téléchargement en un clic
+- **Recalcul explicite** du devis après modification des paramètres
+- **Sélecteur de catégorie** de car (63, 58 VIP, 51, 49 places)
+- **Interface responsive** adaptée aux mobiles
 
 ## Architecture
 
 ```
-├── app.py                        # backend Flask (9 endpoints API JSON)
+├── app.py                        # backend Flask (10 endpoints API JSON + PDF)
 ├── core/
 │   ├── routing.py                # OSRM + Nominatim + Overpass (sans clé API)
 │   ├── osm_overpass.py           # geocodage de secours via Overpass API
 │   ├── pricing.py                # moteur de calcul du devis (formules Excel)
+│   ├── devis_service.py          # validation et sérialisation des devis
+│   ├── devis_pdf.py              # génération PDF via ReportLab
 │   └── db.py                     # SQLite : trajets + lieux_connus
 ├── data/
 │   ├── seed_trajets.py           # 70 trajets connus (peuplement idempotent)
@@ -37,7 +43,7 @@ Interface 100 % custom (HTML/CSS/JS + Leaflet) — aucun framework de dashboard.
 ├── templates/index.html
 ├── static/css/style.css
 ├── static/js/app.js
-└── tests/test_app.py             # 16 tests (pytest)
+└── tests/test_app.py             # 26 tests (pytest)
 ```
 
 ## Installation
@@ -79,7 +85,7 @@ python app.py
 pytest tests/
 ```
 
-16 tests couvrent le moteur de calcul, les endpoints API, le CRUD trajets
+26 tests couvrent le moteur de calcul, les endpoints API (dont PDF), le CRUD trajets
 et l'autocomplétion.
 
 ## Déploiement sur Render
@@ -94,7 +100,23 @@ et l'autocomplétion.
    sera donc perdue au prochain redéploiement, sauf à re-committer la base
    mise à jour ou à passer à un disque persistant Render.
 
+## Usage du devis
+
+1. Sélectionnez une **catégorie de car** (63, 58 VIP, 51 ou 49 places).
+2. Résolvez un itinéraire ou saisissez une distance manuelle.
+3. Modifiez les paramètres si nécessaire (consommation, frais, marge, remise...).
+4. Cliquez sur **« Recalculer la fiche de devis »**.
+5. Cliquez sur **« Télécharger le PDF »** pour obtenir la fiche de devis au format PDF.
+
+Le PDF est généré côté serveur sans être sauvegardé sur le disque.
+
 ## Note importante sur le moteur de calcul
 
 Le coût carburant est multiplié par **4** dans la formule — règle métier
 propre à CA TRANS, reproduction fidèle de l'Excel d'origine. Ne pas modifier.
+
+## Auteur
+
+- GitHub : [@fobahsalomon](https://github.com/fobahsalomon)
+- Email : fobahngouansalomon@gmail.com
+- Portfolio : lien à venir

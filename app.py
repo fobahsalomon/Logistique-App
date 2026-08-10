@@ -5,9 +5,9 @@ Moteur de devis reproduisant exactement les formules Excel d'origine.
 """
 
 import os
-from dataclasses import asdict
+from io import BytesIO
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
 
 from core.db import (
     init_db,
@@ -19,7 +19,9 @@ from core.db import (
     rechercher_trajet,
     supprimer_trajet,
 )
-from core.pricing import DevisInput, calculer_devis, frais_mission_defaut
+from core.devis_pdf import generer_pdf_devis
+from core.devis_service import DevisValidationError, devis_input_from_payload, serialiser_devis
+from core.pricing import calculer_devis, frais_mission_defaut
 from core.routing import RoutingError, calculer_itineraire, get_client, resoudre_itineraire
 from data.seed_trajets import seed as seed_trajets
 
@@ -241,30 +243,42 @@ def api_supprimer_trajet(trajet_id: int):
     return jsonify({"ok": True})
 
 
+def _devis_depuis_requete():
+    payload = request.get_json(silent=True)
+    try:
+        entree = devis_input_from_payload(payload)
+    except DevisValidationError as exc:
+        return None, None, (jsonify({"erreur": f"Paramètres invalides : {exc}"}), 400)
+    return payload, entree, None
+
+
 @app.post("/api/devis")
 def api_devis():
-    payload = request.get_json(force=True) or {}
-    try:
-        entree = DevisInput(
-            distance_km=float(payload["distance_km"]),
-            nb_places=int(payload.get("nb_places", 63)),
-            conso_100km=float(payload.get("conso_100km", 35)),
-            prix_litre=float(payload.get("prix_litre", 700)),
-            frais_chauffeur=float(payload.get("frais_chauffeur", 12000)),
-            frais_convoyeur=float(payload.get("frais_convoyeur", 5000)),
-            peage=float(payload.get("peage", 0)),
-            marge_pct=float(payload.get("marge_pct", 10)),
-            remise_montant=float(payload.get("remise_montant", 0)),
-        )
-    except (KeyError, TypeError, ValueError) as exc:
-        return jsonify({"erreur": f"Paramètres invalides : {exc}"}), 400
+    _, entree, erreur = _devis_depuis_requete()
+    if erreur:
+        return erreur
+    return jsonify(serialiser_devis(calculer_devis(entree)))
+
+
+@app.post("/api/devis/pdf")
+def api_devis_pdf():
+    payload, entree, erreur = _devis_depuis_requete()
+    if erreur:
+        return erreur
 
     resultat = calculer_devis(entree)
-    resultat_json = asdict(resultat)
-    resultat_json["prix_par_place"] = [
-        {"places": n, "prix": v} for n, v in sorted(resultat.prix_par_place.items())
-    ]
-    return jsonify(resultat_json)
+    pdf = generer_pdf_devis(
+        entree,
+        resultat,
+        origine=payload.get("origine"),
+        destination=payload.get("destination"),
+    )
+    return send_file(
+        BytesIO(pdf),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="devis-ca-trans.pdf",
+    )
 
 
 if __name__ == "__main__":

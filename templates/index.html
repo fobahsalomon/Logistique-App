@@ -78,8 +78,13 @@
       <h2>Paramètres du voyage</h2>
 
       <div class="field">
-        <label for="nb-places">Nombre de places souhaitées</label>
-        <input id="nb-places" type="number" min="1" value="63">
+        <label for="nb-places">Catégorie de places du car</label>
+        <select id="nb-places">
+          <option value="63">63 places</option>
+          <option value="58">58 places — VIP</option>
+          <option value="51">51 places</option>
+          <option value="49">49 places</option>
+        </select>
       </div>
 
       <div class="field">
@@ -125,9 +130,15 @@
         <input id="remise-montant" type="number" min="0" value="0">
       </div>
 
+      <div class="devis-actions">
+        <button id="btn-calculer-devis" class="btn btn-primary">Recalculer la fiche de devis</button>
+        <button id="btn-telecharger-pdf" class="btn" disabled>Télécharger le PDF</button>
+      </div>
+
       <hr>
 
       <h2>Fiche de devis</h2>
+      <p id="etat-devis" class="muted" aria-live="polite">Résolvez un itinéraire puis recalculez le devis.</p>
       <div id="fiche-devis">
         <p class="muted">Résolvez d'abord un itinéraire pour obtenir la distance.</p>
       </div>
@@ -155,6 +166,15 @@
       </div>
     </details>
   </section>
+
+  <footer class="site-footer">
+    <span>CA TRANS · Application de cotation</span>
+    <nav aria-label="Liens personnels">
+      <a href="https://github.com/fobahsalomon" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="mailto:fobahngouansalomon@gmail.com">fobahngouansalomon@gmail.com</a>
+      <span>Portfolio : lien à venir</span>
+    </nav>
+  </footer>
 
   <dialog id="modal-edition" class="modal">
     <h3>Modifier le trajet</h3>

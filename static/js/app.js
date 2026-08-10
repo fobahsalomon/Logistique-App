@@ -219,7 +219,7 @@
     }
     // Mode résolution de trajet (secondaire, dans le <details>)
     const pointKey = state.modeClic === "origine" ? "originePoint" : "destinationPoint";
-    state[pointKey] = { lat: e.latlng.lat, lon: e.latlng.lng };
+    state[pointKey] = { lat: e.latlng.lat, lon: e.latlng.lon };
     placerMarqueur(e.latlng, state.modeClic);
   });
 
@@ -358,8 +358,8 @@
     const o = state.originePoint;
     const d = state.destinationPoint;
     const reponse = await appelApi("/api/itineraire", {
-      origine:     { lat: o.lat, lon: o.lon },
-      destination: { lat: d.lat, lon: d.lon },
+      origine:     { lat: o.lat, lon: o.lng },
+      destination: { lat: d.lat, lon: d.lng },
     });
     if (reponse.statut === "erreur") { afficherStatut("erreur", reponse.message); return; }
     state.distanceKm = reponse.distance_km;
@@ -438,12 +438,82 @@
   });
 
   // ------------------------------------------------------------- devis
+  function devisPerime(message = "Paramètres modifiés. Recalculez le devis.") {
+    const etat = document.getElementById("etat-devis");
+    if (etat) {
+      etat.textContent = message;
+      etat.hidden = false;
+    }
+    document.getElementById("btn-telecharger-pdf").disabled = true;
+  }
+
+  function getDevisPayload() {
+    return {
+      distance_km: state.distanceKm,
+      nb_places: parseInt(document.getElementById("nb-places").value, 10) || 63,
+      conso_100km: parseFloat(document.getElementById("conso-100km").value) || 0,
+      prix_litre: parseFloat(document.getElementById("prix-litre").value) || 0,
+      frais_chauffeur: parseFloat(document.getElementById("frais-chauffeur").value) || 0,
+      frais_convoyeur: parseFloat(document.getElementById("frais-convoyeur").value) || 0,
+      peage: parseFloat(document.getElementById("peage").value) || 0,
+      marge_pct: parseFloat(document.getElementById("marge-pct").value) || 0,
+      remise_montant: parseFloat(document.getElementById("remise-montant").value) || 0,
+      origine: state.origineTexte || null,
+      destination: state.destinationTexte || null,
+    };
+  }
+
   const champsDevis = [
     "nb-places", "conso-100km", "prix-litre", "frais-chauffeur",
     "frais-convoyeur", "peage", "marge-pct", "remise-montant",
   ];
   champsDevis.forEach((id) => {
-    document.getElementById(id).addEventListener("input", calculerDevis);
+    document.getElementById(id).addEventListener("input", () => devisPerime());
+  });
+  document.getElementById("nb-places").addEventListener("change", () => devisPerime());
+
+  document.getElementById("btn-calculer-devis").addEventListener("click", calculerDevis);
+
+  document.getElementById("btn-telecharger-pdf").addEventListener("click", async () => {
+    if (!state.distanceKm) return;
+    const btn = document.getElementById("btn-telecharger-pdf");
+    const labelOriginal = btn.textContent;
+    btn.textContent = "Génération...";
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch("/api/devis/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(getDevisPayload()),
+      });
+
+      if (!resp.ok) {
+        let errMsg = "Erreur lors de la génération du PDF.";
+        try {
+          const err = await resp.json();
+          if (err.erreur) errMsg = err.erreur;
+        } catch(e) {}
+        alert(errMsg);
+        return;
+      }
+
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+      a.download = "devis-ca-trans.pdf";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      alert("Erreur de connexion.");
+    } finally {
+      btn.textContent = labelOriginal;
+      btn.disabled = false;
+    }
   });
 
   document.getElementById("nb-jours").addEventListener("change", async (e) => {
@@ -451,7 +521,7 @@
     const reponse = await appelApi(`/api/frais-mission?jours=${jours}`);
     document.getElementById("frais-chauffeur").value = reponse.frais_chauffeur;
     document.getElementById("frais-convoyeur").value = reponse.frais_convoyeur;
-    calculerDevis();
+    devisPerime();
   });
 
   function formaterFcfa(valeur) {
@@ -483,8 +553,13 @@
     const r = await appelApi("/api/devis", corps);
     if (r.erreur) {
       conteneur.innerHTML = `<p class="statut erreur">${r.erreur}</p>`;
+      document.getElementById("etat-devis").hidden = true;
+      document.getElementById("btn-telecharger-pdf").disabled = true;
       return;
     }
+
+    document.getElementById("etat-devis").hidden = true;
+    document.getElementById("btn-telecharger-pdf").disabled = false;
 
     const lignesPlaces = r.prix_par_place
       .map((p) => `<tr><td>${p.places} places</td><td>${formaterFcfa(p.prix)}</td></tr>`)
@@ -504,9 +579,9 @@
         <dt>TVA (18 %)</dt><dd>${formaterFcfa(r.tva)}</dd>
         <dt>TTC aller-retour</dt><dd>${formaterFcfa(r.ttc_aller_retour)}</dd>
         <dt>TTC après remise</dt><dd>${formaterFcfa(r.ttc_apres_remise)}</dd>
-        <div class="highlight">
-          <span>TTC aller simple</span>
-          <span>${formaterFcfa(r.ttc_aller_simple)}</span>
+        <div class="highlight highlight-total">
+          <span>TTC aller-retour</span>
+          <span>${formaterFcfa(r.ttc_aller_retour)}</span>
         </div>
       </dl>
       <table class="table-places">

@@ -17,7 +17,6 @@ def _routing_indisponible(*args, **kwargs):
 def client(tmp_path, monkeypatch):
     db_path = tmp_path / "test.db"
     monkeypatch.setattr("core.db.DB_PATH", db_path)
-    # Empêche les appels HTTP réels au service de routage dans les tests
     monkeypatch.setattr("core.routing.resoudre_itineraire", _routing_indisponible)
     monkeypatch.setattr("core.routing.calculer_itineraire", _routing_indisponible)
     app_module.init_db()
@@ -31,6 +30,9 @@ def test_page_accueil(client):
     rep = client.get("/")
     assert rep.status_code == 200
     assert b"CA TRANS" in rep.data
+    assert b"btn-calculer-devis" in rep.data
+    assert b"btn-telecharger-pdf" in rep.data
+    assert b"Portfolio" in rep.data
 
 
 def test_liste_trajets(client):
@@ -49,7 +51,6 @@ def test_resoudre_trajet_connu(client):
 
 
 def test_resoudre_trajet_inconnu(client):
-    # Trajet absent de la base → tente le routage → erreur (service mocké)
     rep = client.post("/api/resoudre", json={"origine": "Ville inconnue X", "destination": "Ville inconnue Y"})
     assert rep.status_code == 200
     data = rep.get_json()
@@ -78,6 +79,56 @@ def test_devis_cas_reference(client):
     assert rep.status_code == 200
     data = rep.get_json()
     assert data["ttc_aller_simple"] == pytest.approx(566914.48, abs=1e-6)
+    assert data["ttc_aller_retour"] == pytest.approx(2 * 566914.48, abs=1e-6)
+
+
+def test_devis_capacites_supportees(client):
+    for capacite in (63, 58, 51, 49):
+        rep = client.post("/api/devis", json={"distance_km": 100, "nb_places": capacite})
+        assert rep.status_code == 200
+        data = rep.get_json()
+        assert "ttc_aller_retour" in data
+
+
+def test_devis_capacite_invalide(client):
+    rep = client.post("/api/devis", json={"distance_km": 100, "nb_places": 50})
+    assert rep.status_code == 400
+
+
+def test_devis_distance_manquante(client):
+    rep = client.post("/api/devis", json={})
+    assert rep.status_code == 400
+
+
+def test_devis_distance_nulle(client):
+    rep = client.post("/api/devis", json={"distance_km": 0})
+    assert rep.status_code == 400
+
+
+def test_devis_valeur_negative(client):
+    rep = client.post("/api/devis", json={"distance_km": 100, "frais_chauffeur": -1})
+    assert rep.status_code == 400
+
+
+def test_devis_non_fini(client):
+    rep = client.post("/api/devis", json={"distance_km": float("inf")})
+    assert rep.status_code == 400
+
+
+def test_devis_pdf_reponse(client):
+    rep = client.post(
+        "/api/devis/pdf",
+        json={"distance_km": 150, "frais_chauffeur": 12000, "frais_convoyeur": 5000},
+    )
+    assert rep.status_code == 200
+    assert rep.content_type.startswith("application/pdf")
+    assert "attachment" in rep.headers.get("Content-Disposition", "")
+    assert rep.data.startswith(b"%PDF-")
+
+
+def test_devis_pdf_parametres_invalides(client):
+    rep = client.post("/api/devis/pdf", json={})
+    assert rep.status_code == 400
 
 
 def test_enregistrer_trajet(client):
@@ -124,7 +175,6 @@ def test_autocomplete_lieux_vide(client):
 
 
 def test_autocomplete_lieux_apres_insertion(client):
-    # Insérer un lieu manuellement puis le retrouver via l'autocomplete
     rep = client.post("/api/lieu", json={"nom": "Bouaké Centre", "lat": 7.69, "lon": -5.03})
     assert rep.status_code == 201
     rep2 = client.get("/api/lieux?q=bouake")
@@ -135,7 +185,7 @@ def test_autocomplete_lieux_apres_insertion(client):
 def test_lieu_idempotent(client):
     from core.db import inserer_lieu, rechercher_lieu
     inserer_lieu("Yamoussoukro", 6.82, -5.27, source="test")
-    inserer_lieu("Yamoussoukro", 6.82, -5.27, source="test")  # doublon
+    inserer_lieu("Yamoussoukro", 6.82, -5.27, source="test")
     l = rechercher_lieu("Yamoussoukro")
     assert l is not None
     assert l["nom"] == "Yamoussoukro"
@@ -147,7 +197,6 @@ def test_supprimer_trajet_inexistant(client):
 
 
 def test_geocoder_requete_courte(client):
-    # Requête < 3 caractères → retourne immédiatement sans appel réseau
     rep = client.get("/api/geocoder?q=ab")
     assert rep.status_code == 200
     assert rep.get_json() == []
