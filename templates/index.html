@@ -47,7 +47,7 @@
       <div id="statut" class="statut" hidden></div>
 
       <div id="bloc-manuel" class="field" hidden>
-        <label for="distance-manuelle">Lieu introuvable — entrez la distance aller simple (km)</label>
+        <label for="distance-manuelle">Distance manuelle (km)</label>
         <div class="row">
           <input id="distance-manuelle" type="number" min="0" step="1">
           <button id="btn-distance-manuelle" class="btn">Utiliser cette distance</button>
@@ -88,45 +88,45 @@
       </div>
 
       <div class="field">
-        <label for="nb-jours">Nombre de jours avec le véhicule</label>
+        <label for="nb-jours">Nombre de jours</label>
         <input id="nb-jours" type="number" min="1" step="1" value="1">
       </div>
 
       <div class="row row-2">
         <div class="field">
-          <label for="conso-100km">Consommation / 100 km (L)</label>
+          <label for="conso-100km">Consommation</label>
           <input id="conso-100km" type="number" min="0" value="35">
         </div>
         <div class="field">
-          <label for="prix-litre">Prix du litre (F CFA)</label>
+          <label for="prix-litre">Prix du litre</label>
           <input id="prix-litre" type="number" min="0" value="700">
         </div>
       </div>
 
       <div class="row row-2">
         <div class="field">
-          <label for="frais-chauffeur">Frais de mission chauffeur (F CFA)</label>
+          <label for="frais-chauffeur">Frais chauffeur</label>
           <input id="frais-chauffeur" type="number" min="0" value="12000">
         </div>
         <div class="field">
-          <label for="frais-convoyeur">Frais de mission convoyeur (F CFA)</label>
+          <label for="frais-convoyeur">Frais convoyeur</label>
           <input id="frais-convoyeur" type="number" min="0" value="5000">
         </div>
       </div>
 
       <div class="row row-2">
         <div class="field">
-          <label for="peage">Péage (F CFA)</label>
+          <label for="peage">Péage</label>
           <input id="peage" type="number" min="0" value="0">
         </div>
         <div class="field">
-          <label for="marge-pct">Marge souhaitée (%)</label>
+          <label for="marge-pct">Marge (%)</label>
           <input id="marge-pct" type="number" min="0" value="10">
         </div>
       </div>
 
       <div class="field">
-        <label for="remise-montant">Remise (montant en F CFA)</label>
+        <label for="remise-montant">Remise</label>
         <input id="remise-montant" type="number" min="0" value="0">
       </div>
 
@@ -138,7 +138,7 @@
       <hr>
 
       <h2>Fiche de devis</h2>
-      <p id="etat-devis" class="muted" aria-live="polite">Résolvez un itinéraire puis recalculez le devis.</p>
+      <p id="etat-devis" class="muted" aria-live="polite">Modifiez un paramètre puis recalculer.</p>
       <div id="fiche-devis">
         <p class="muted">Résolvez d'abord un itinéraire pour obtenir la distance.</p>
       </div>

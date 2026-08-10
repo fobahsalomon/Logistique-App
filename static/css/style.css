@@ -334,28 +334,181 @@ dialog.modal h3 { margin: 0 0 20px; font-size: 16px; font-weight: 600; }
 
 /* ------------------------------------------------------------- responsive */
 @media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; padding: 16px; }
+  .layout {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 16px;
+  }
   .row-2 { grid-template-columns: 1fr; }
   .topbar { padding: 14px 16px; }
   .panel { padding: 16px; }
   .carte { height: 320px; }
+  .panel-full { padding: 0 16px; }
 }
 
 @media (max-width: 640px) {
-  .topbar { flex-direction: column; gap: 6px; }
-  .layout { padding: 12px; gap: 14px; }
-  .panel { padding: 14px; }
-  .row { flex-direction: column; align-items: stretch; gap: 10px; }
-  .row-resolve { flex-direction: column; align-items: stretch; gap: 10px; }
-  .carte-actions { flex-direction: column; align-items: stretch; gap: 10px; }
-  .carte { height: 260px; }
-  .panel-full { padding: 0 12px; }
-  .table-wrap { margin: 0 -6px; }
-  dialog.modal { min-width: auto; width: calc(100vw - 24px); padding: 20px; }
-  .btn { min-height: 44px; font-size: 16px; }
-  #fiche-devis dl { gap: 8px 10px; }
-  #fiche-devis .highlight { font-size: 17px; }
-  .table-places th, .table-places td { padding: 8px 6px; font-size: 12px; }
+  .topbar {
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+  }
+  .brand { font-size: 22px; }
+  .subtitle { font-size: 11px; }
+  .layout {
+    padding: 10px;
+    gap: 12px;
+  }
+  .panel {
+    padding: 12px;
+    border-radius: 8px;
+  }
+  h2 {
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+  .field {
+    margin-bottom: 10px;
+  }
+  .field label {
+    font-size: 10px;
+  }
+  input[type="text"],
+  input[type="number"],
+  select {
+    font-size: 16px;
+    padding: 10px 10px;
+  }
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .row-2 {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .row-resolve {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .carte-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .carte {
+    height: 240px;
+    border-radius: 6px;
+  }
+  .panel-full { padding: 0 10px; }
+  .table-wrap { margin: 0 -4px; }
+  table {
+    font-size: 12px;
+  }
+  th, td {
+    padding: 6px 6px;
+  }
+  .col-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .col-actions .btn {
+    min-height: 36px;
+    font-size: 13px;
+  }
+  dialog.modal {
+    min-width: auto;
+    width: calc(100vw - 20px);
+    max-width: none;
+    padding: 16px;
+    border-radius: 8px;
+  }
+  .modal-actions {
+    flex-direction: column;
+  }
+  .modal-actions .btn {
+    min-height: 44px;
+  }
+  .btn {
+    min-height: 44px;
+    font-size: 15px;
+    padding: 10px 14px;
+  }
+  .btn-sm {
+    min-height: 36px;
+    font-size: 13px;
+    padding: 6px 12px;
+  }
+  .btn-primary {
+    font-weight: 700;
+  }
+  .devis-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .devis-actions .btn {
+    width: 100%;
+    min-height: 48px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  #fiche-devis dl {
+    grid-template-columns: 1fr;
+    gap: 6px 10px;
+  }
+  #fiche-devis dt {
+    font-size: 11px;
+    margin-bottom: 2px;
+  }
+  #fiche-devis dd {
+    text-align: left;
+    font-size: 14px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--line);
+  }
+  #fiche-devis .highlight {
+    grid-column: 1;
+    font-size: 17px;
+    padding: 10px 12px;
+  }
+  .highlight-total-round {
+    font-size: 18px !important;
+    padding: 12px !important;
+  }
+  .highlight-total-oneway {
+    font-size: 14px !important;
+    padding: 10px 12px !important;
+  }
+  .table-places th,
+  .table-places td {
+    padding: 6px 4px;
+    font-size: 11px;
+  }
+  .autocomplete-liste {
+    max-height: 180px;
+    font-size: 13px;
+  }
+  .site-footer {
+    font-size: 12px;
+    padding: 14px 10px;
+  }
+  .site-footer nav {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 380px) {
+  .layout { padding: 8px; gap: 10px; }
+  .panel { padding: 10px; }
+  .carte { height: 200px; }
+  .btn { min-height: 40px; font-size: 14px; }
+  .devis-actions .btn { min-height: 44px; font-size: 15px; }
+  #fiche-devis .highlight { font-size: 15px; }
+  .highlight-total-round { font-size: 16px !important; }
+  table { font-size: 11px; }
+  th, td { padding: 5px 4px; }
 }
 
 /* ------------------------------------------------------------- controls */
