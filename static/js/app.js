@@ -532,7 +532,7 @@
       clearTimeout(timerOnline);
       indexActif = -1;
 
-      // Mode multi-étapes : ajouter au lieu de remplacer
+      // Mode multi-étapes
       if (type === "origine") {
         if (stops.length === 0) {
           stops.push({ lat, lon, nom });
@@ -542,7 +542,7 @@
           carte.flyTo([lat, lon], 11);
           afficherStops();
           majMarqueursEtapes();
-        } else if (stops.length >= 1) {
+        } else {
           // Remplacer l'origine existante
           stops[0] = { lat, lon, nom };
           state.originePoint = { lat, lon };
@@ -551,15 +551,12 @@
           carte.flyTo([lat, lon], 11);
           afficherStops();
           majMarqueursEtapes();
-          if (stops.length >= 2) calculerRouteMulti();
         }
       } else {
         if (stops.length < 2) {
-          // Pas encore d'étapes intermédiaires, définir comme destination
           while (stops.length < 2) stops.push(null);
           stops[1] = { lat, lon, nom };
         } else {
-          // Remplacer la dernière étape (arrivée)
           stops[stops.length - 1] = { lat, lon, nom };
         }
         state.destinationPoint = { lat, lon };
@@ -568,7 +565,15 @@
         carte.flyTo([lat, lon], 11);
         afficherStops();
         majMarqueursEtapes();
-        if (stops.length >= 2) calculerRouteMulti();
+      }
+
+      // Lancer le calcul d'itinéraire (simple ou multi-étapes)
+      if (state.originePoint && state.destinationPoint) {
+        if (stops.length === 2) {
+          calculerItineraireAuto();
+        } else if (stops.length >= 3) {
+          calculerRouteMulti();
+        }
       }
     }
 
