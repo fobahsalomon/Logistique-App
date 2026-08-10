@@ -589,73 +589,29 @@ select:focus { border-color: var(--yellow); }
   font-size: 15px !important;
 }
 
-/* ------------------------------------------------------------- autocomplete keyboard */
-.suggestion-active {
-  background: var(--yellow) !important;
-  color: var(--dark, #1b232b) !important;
-}
-
-/* ------------------------------------------------------------- multi-stop */
-.stops-bloc { margin: 10px 0 12px; }
-.stops-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-  margin: 0 0 8px;
-}
-.stops-liste {
-  list-style: none;
-  margin: 0 0 10px;
-  padding: 0;
+/* ------------------------------------------------------------- mode recherche */
+.search-mode-toggle {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.stops-liste li {
-  display: flex;
-  align-items: center;
   gap: 8px;
+  margin-bottom: 4px;
+}
+.btn-mode {
+  flex: 1;
   background: var(--panel-alt);
   border: 1px solid var(--line);
+  color: var(--text-muted);
+  padding: 8px 12px;
   border-radius: 6px;
-  padding: 8px 10px;
   font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
 }
-.stop-badge {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.btn-mode:hover { border-color: var(--yellow); color: var(--text); }
+.btn-mode-active {
   background: var(--yellow);
   color: var(--dark, #1b232b);
-  padding: 2px 6px;
-  border-radius: 3px;
-  white-space: nowrap;
+  border-color: var(--yellow);
+  font-weight: 600;
 }
-.btn-stop-x {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: var(--red);
-  cursor: pointer;
-  font-size: 14px;
-  padding: 0 4px;
-  line-height: 1;
-}
-.btn-stop-x:hover { color: #ff6b63; }
-.stops-add {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-.stops-add input { flex: 1; }
-#resultat-route-multi {
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: rgba(76, 175, 109, 0.1);
-  border: 1px solid var(--green);
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--green);
-}
+.adresse-bloc { margin: 8px 0 10px; }

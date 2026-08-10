@@ -81,6 +81,46 @@ def api_lieux():
     ])
 
 
+@app.get("/api/pada")
+def api_pada():
+    """Recherche d'adresses PADA (rues, numéros, quartiers)."""
+    q = request.args.get("q", "").strip()
+    if len(q) < 3:
+        return jsonify([])
+
+    try:
+        # PADA utilise Nominatim avec un focus sur les adresses en CI
+        rep = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={
+                "q": q,
+                "format": "json",
+                "limit": 8,
+                "countrycodes": "ci",
+                "accept-language": "fr",
+                "addressdetails": 1,
+            },
+            headers={"User-Agent": _UA},
+            timeout=10,
+        )
+        rep.raise_for_status()
+        data = rep.json()
+        resultats = []
+        for r in data:
+            adresse = r.get("display_name", "")
+            # Prioriser les résultats qui contiennent des numéros ou des types de rue
+            type_rue = r.get("type", "")
+            if type_rue in ("house", "street", "residential", "commercial", "road"):
+                resultats.append({
+                    "label": adresse,
+                    "lat": float(r["lat"]),
+                    "lon": float(r["lon"]),
+                })
+        return jsonify(resultats[:8])
+    except Exception:
+        return jsonify([])
+
+
 @app.post("/api/lieu")
 def api_enregistrer_lieu():
     """Enregistre un lieu nommé manuellement (clic sur la carte)."""
@@ -193,52 +233,6 @@ def api_itineraire():
         "duree_min": duree_min,
         "message": f"Itinéraire calculé : {distance_km} km, ~{duree_min} min",
         "geometrie": itineraire.geometrie,
-    })
-
-
-@app.post("/api/itineraire-multi")
-def api_itineraire_multi():
-    payload = request.get_json(force=True) or {}
-    coords = (payload.get("coords") or "").strip()
-    if not coords:
-        return jsonify({"statut": "erreur", "message": "Coordonnées manquantes."}), 400
-    points = []
-    for paire in coords.split(";"):
-        lon_s, lat_s = paire.split(",")
-        points.append((float(lon_s), float(lat_s)))
-    if len(points) < 2:
-        return jsonify({"statut": "erreur", "message": "Au moins 2 points requis."}), 400
-
-    # OSRM ne calcule pas nativement le multi-arrêts en une seule requête optimisée ;
-    # on enchaîne les segments et on additionne distances/durées/géométries.
-    distance_totale = 0.0
-    duree_totale = 0.0
-    geometries = []
-    for i in range(len(points) - 1):
-        o, d = points[i], points[i + 1]
-        try:
-            itineraire = calculer_itineraire(get_client(), o, d)
-        except RoutingError as exc:
-            return jsonify({"statut": "erreur", "message": str(exc)}), 200
-        distance_totale += itineraire.distance_km
-        duree_totale += itineraire.duree_min
-        geometries.append(itineraire.geometrie)
-
-    fusion = {"type": "LineString", "coordinates": []}
-    for geo in geometries:
-        if geo and geo.get("coordinates"):
-            coords_geo = geo["coordinates"]
-            if not fusion["coordinates"]:
-                fusion["coordinates"].extend(coords_geo)
-            else:
-                fusion["coordinates"].extend(coords_geo[1:])
-
-    return jsonify({
-        "statut": "ors",
-        "distance_km": round(distance_totale, 1),
-        "duree_min": round(duree_totale),
-        "message": f"Itinéraire multi-étapes : {round(distance_totale, 1)} km, ~{round(duree_totale)} min",
-        "geometrie": fusion,
     })
 
 

@@ -18,21 +18,51 @@
     <section class="panel panel-main">
       <h2>Trajet</h2>
 
+      <div class="field">
+        <label>Mode de recherche</label>
+        <div class="search-mode-toggle">
+          <button id="mode-lieux" class="btn-mode btn-mode-active" data-mode="lieux">Lieux / Villes</button>
+          <button id="mode-adresse" class="btn-mode" data-mode="adresse">Adresses / Rues (PADA)</button>
+        </div>
+      </div>
+
       <div class="row row-2">
         <div class="field">
           <label for="origine">Origine</label>
           <div class="autocomplete-wrap">
-            <input id="origine" placeholder="Ex : San Pedro" autocomplete="off">
+            <input id="origine" placeholder="Ex : Abidjan, Marcory" autocomplete="off">
             <ul id="suggestions-origine" class="autocomplete-liste" hidden></ul>
           </div>
         </div>
         <div class="field">
           <label for="destination">Destination</label>
           <div class="autocomplete-wrap">
-            <input id="destination" placeholder="Ex : Abidjan" autocomplete="off">
+            <input id="destination" placeholder="Ex : San Pedro, Yamoussoukro" autocomplete="off">
             <ul id="suggestions-destination" class="autocomplete-liste" hidden></ul>
           </div>
         </div>
+      </div>
+
+      <div id="bloc-adresse" class="adresse-bloc" hidden>
+        <div class="row row-2">
+          <div class="field">
+            <label for="origine-adresse">Origine (adresse)</label>
+            <div class="autocomplete-wrap">
+              <input id="origine-adresse" placeholder="Ex : Rue 12, Angle 3, Plateau" autocomplete="off">
+              <ul id="suggestions-origine-adresse" class="autocomplete-liste" hidden></ul>
+            </div>
+          </div>
+          <div class="field">
+            <label for="destination-adresse">Destination (adresse)</label>
+            <div class="autocomplete-wrap">
+              <input id="destination-adresse" placeholder="Ex : Boulevard VGE, Cocody" autocomplete="off">
+              <ul id="suggestions-destination-adresse" class="autocomplete-liste" hidden></ul>
+            </div>
+          </div>
+        </div>
+        <p class="muted" style="font-size:12px;margin:0 0 8px;">
+          Recherche par rue, numéro, quartier ou intersection. Source PADA.
+        </p>
       </div>
 
       <div class="row-resolve">
@@ -51,16 +81,6 @@
         <div class="row">
           <input id="distance-manuelle" type="number" min="0" step="1">
           <button id="btn-distance-manuelle" class="btn">Utiliser cette distance</button>
-        </div>
-      </div>
-
-      <div id="bloc-etapes" class="stops-bloc" hidden>
-        <h3 class="stops-title">Étapes du trajet</h3>
-        <ul id="liste-etapes" class="stops-liste"></ul>
-        <div class="stops-add">
-          <input id="recherche-etape" placeholder="Ajouter une étape intermédiaire…" autocomplete="off">
-          <ul id="suggestions-etape" class="autocomplete-liste" hidden></ul>
-          <button id="btn-ajouter-etape" class="btn btn-sm" disabled>+ Étape</button>
         </div>
       </div>
 
