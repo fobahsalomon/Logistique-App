@@ -13,6 +13,7 @@
     routeLayer: null,
     routeBounds: null,
     modeClic: "origine",
+    modeRecherche: "lieux",
     origineTexte: "",
     destinationTexte: "",
     statut: null,
@@ -151,6 +152,55 @@
     else activerModeAjout();
   });
 
+  // -------------------------------------------------------- mode recherche lieux / adresses
+  const btnModeLieux = document.getElementById("mode-lieux");
+  const btnModeAdresse = document.getElementById("mode-adresse");
+  const blocAdresse = document.getElementById("bloc-adresse");
+  const inputOrigine = document.getElementById("origine");
+  const inputDestination = document.getElementById("destination");
+  const inputOrigineAdresse = document.getElementById("origine-adresse");
+  const inputDestinationAdresse = document.getElementById("destination-adresse");
+  const suggestionsOrigine = document.getElementById("suggestions-origine");
+  const suggestionsDestination = document.getElementById("suggestions-destination");
+  const suggestionsOrigineAdresse = document.getElementById("suggestions-origine-adresse");
+  const suggestionsDestinationAdresse = document.getElementById("suggestions-destination-adresse");
+
+  function definirMode(mode) {
+    state.modeRecherche = mode;
+    btnModeLieux.classList.toggle("btn-mode-active", mode === "lieux");
+    btnModeAdresse.classList.toggle("btn-mode-active", mode === "adresse");
+    blocAdresse.hidden = mode === "lieux";
+
+    if (mode === "lieux") {
+      inputOrigine.hidden = false;
+      inputDestination.hidden = false;
+      inputOrigineAdresse.hidden = true;
+      inputDestinationAdresse.hidden = true;
+      inputOrigineAdresse.value = "";
+      inputDestinationAdresse.value = "";
+      suggestionsOrigineAdresse.hidden = true;
+      suggestionsDestinationAdresse.hidden = true;
+      suggestionsOrigineAdresse.innerHTML = "";
+      suggestionsDestinationAdresse.innerHTML = "";
+    } else {
+      inputOrigine.hidden = true;
+      inputDestination.hidden = true;
+      inputOrigineAdresse.hidden = false;
+      inputDestinationAdresse.hidden = false;
+      inputOrigine.value = "";
+      inputDestination.value = "";
+      suggestionsOrigine.hidden = true;
+      suggestionsDestination.hidden = true;
+      suggestionsOrigine.innerHTML = "";
+      suggestionsDestination.innerHTML = "";
+    }
+  }
+
+  btnModeLieux.addEventListener("click", () => definirMode("lieux"));
+  btnModeAdresse.addEventListener("click", () => definirMode("adresse"));
+
+  definirMode("lieux");
+
   function ouvrirPopupAjoutLieu(latlng) {
     const container = document.createElement("div");
     container.className = "popup-ajout";
@@ -286,8 +336,8 @@
         const li = document.createElement("li");
         li.dataset.lat = l.lat;
         li.dataset.lon = l.lon;
-        li.dataset.nom = l.nom;
-        const texte = document.createTextNode(l.nom);
+        li.dataset.nom = l.nom || l.label || "";
+        const texte = document.createTextNode(li.dataset.nom);
         li.appendChild(texte);
         if (online) {
           li.classList.add("suggestion-online");
@@ -337,7 +387,18 @@
       const q = input.value.trim();
       if (q.length < 2) { liste.innerHTML = ""; liste.hidden = true; return; }
 
+      const delai = modeRecherche === "adresse" ? 250 : 200;
       timerLocal = setTimeout(async () => {
+        if (modeRecherche === "adresse") {
+          const online = await appelApi(`/api/adresses?q=${encodeURIComponent(q)}`);
+          if (Array.isArray(online) && online.length > 0) {
+            ajouterSuggestions(online, true);
+          } else {
+            liste.hidden = true;
+          }
+          return;
+        }
+
         const lieux = await appelApi(`/api/lieux?q=${encodeURIComponent(q)}`);
         if (!Array.isArray(lieux)) { liste.hidden = true; return; }
         ajouterSuggestions(lieux, false);
@@ -345,14 +406,13 @@
         // Complément en ligne si peu de résultats locaux
         if (lieux.length < 3 && q.length >= 3) {
           timerOnline = setTimeout(async () => {
-            const source = modeRecherche === "adresse" ? "/api/adresses" : "/api/geocoder";
-            const online = await appelApi(`${source}?q=${encodeURIComponent(q)}`);
+            const online = await appelApi(`/api/geocoder?q=${encodeURIComponent(q)}`);
             if (Array.isArray(online) && online.length > 0) {
               ajouterSuggestions(online, true);
             }
           }, 500);
         }
-      }, 200);
+      }, delai);
     });
 
     input.addEventListener("keydown", (e) => {
@@ -392,6 +452,8 @@
 
   setupAutocomplete("origine",     "suggestions-origine",     "origine");
   setupAutocomplete("destination", "suggestions-destination", "destination");
+  setupAutocomplete("origine-adresse",     "suggestions-origine-adresse",     "origine");
+  setupAutocomplete("destination-adresse", "suggestions-destination-adresse", "destination");
 
   async function calculerItineraireAuto() {
     const o = state.originePoint;
