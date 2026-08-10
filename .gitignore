@@ -3,7 +3,6 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .env
-data/ca_trans.db
 data/CI/
 *.osm.pbf
 .venv/
