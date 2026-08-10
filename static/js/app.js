@@ -579,9 +579,13 @@
         <dt>TVA (18 %)</dt><dd>${formaterFcfa(r.tva)}</dd>
         <dt>TTC aller-retour</dt><dd>${formaterFcfa(r.ttc_aller_retour)}</dd>
         <dt>TTC après remise</dt><dd>${formaterFcfa(r.ttc_apres_remise)}</dd>
-        <div class="highlight highlight-total">
+        <div class="highlight highlight-total highlight-total-round">
           <span>TTC aller-retour</span>
           <span>${formaterFcfa(r.ttc_aller_retour)}</span>
+        </div>
+        <div class="highlight highlight-total highlight-total-oneway">
+          <span>TTC aller simple</span>
+          <span>${formaterFcfa(r.ttc_aller_simple)}</span>
         </div>
       </dl>
       <table class="table-places">

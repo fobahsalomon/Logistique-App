@@ -421,3 +421,17 @@ select:focus { border-color: var(--yellow); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ------------------------------------------------------------- quote totals */
+.highlight-total-round {
+  background: var(--pale-yellow, #fff7d6);
+  border: 1.5px solid var(--yellow);
+  color: var(--dark, #1b232b) !important;
+  font-size: 18px !important;
+}
+.highlight-total-oneway {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text) !important;
+  font-size: 15px !important;
+}
