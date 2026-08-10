@@ -272,16 +272,236 @@
     document.getElementById("bloc-manuel").hidden = true;
   }
 
-  // --------------------------------------------------------- autocomplete
+  // --------------------------------------------------------- trajet multi-étapes
+  let stops = [];
+  let marqueursEtapes = [];
+
+  function afficherStops() {
+    const liste = document.getElementById("liste-etapes");
+    liste.innerHTML = stops.map((s, i) => {
+      const badge = i === 0 ? "Départ" : i === stops.length - 1 ? "Arrivée" : `Étape ${i}`;
+      const removable = i > 0 && i < stops.length - 1;
+      const x = removable ? `<button class="btn-stop-x" data-index="${i}" title="Retirer cette étape">✕</button>` : "";
+      return `<li data-index="${i}"><span class="stop-badge">${badge}</span> ${s.nom}${x}</li>`;
+    }).join("");
+
+    liste.querySelectorAll(".btn-stop-x").forEach((btn) => {
+      btn.addEventListener("click", () => retirerEtape(parseInt(btn.dataset.index, 10)));
+    });
+  }
+
+  function majMarqueursEtapes() {
+    marqueursEtapes.forEach((m) => carte.removeLayer(m));
+    marqueursEtapes = [];
+    stops.forEach((s, i) => {
+      const icone = i === 0 ? iconeOrigine : i === stops.length - 1 ? iconeDestination : L.divIcon({
+        html: `<div style="
+          width:22px;height:22px;border-radius:50%;
+          background:#f2b705;color:#1b232b;font-weight:700;
+          display:flex;align-items:center;justify-content:center;
+          font-size:11px;border:2px solid #1b232b;
+        ">${i}</div>`,
+        className: "",
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      });
+      const m = L.marker([s.lat, s.lon], { icon: icone, title: s.nom }).addTo(carte);
+      m.bindPopup(`<strong>${s.nom}</strong><br><em>${i === 0 ? "Départ" : i === stops.length - 1 ? "Arrivée" : "Étape " + i}</em>`);
+      marqueursEtapes.push(m);
+    });
+  }
+
+  function retirerEtape(index) {
+    if (stops.length <= 3) return; // garder au moins départ + arrivée + 1 étape
+    stops.splice(index, 1);
+    afficherStops();
+    majMarqueursEtapes();
+    calculerRouteMulti();
+  }
+
+  function calculerRouteMulti() {
+    if (stops.length < 2) return;
+    const coords = stops.map((s) => `${s.lon},${s.lat}`).join(";");
+    appelApi("/api/itineraire-multi", { coords }).then((reponse) => {
+      if (reponse.statut === "erreur") {
+        afficherStatut("erreur", reponse.message);
+        document.getElementById("btn-enregistrer-trajet").hidden = true;
+        state.distanceKm = null;
+        return;
+      }
+      state.distanceKm = reponse.distance_km;
+      state.statut = "ors";
+      afficherStatut("ors", reponse.message);
+      dessinerItineraire(reponse.geometrie);
+      document.getElementById("btn-enregistrer-trajet").hidden = false;
+      if (stops.length >= 2) {
+        document.getElementById("btn-enregistrer-trajet").hidden = false;
+      }
+      calculerDevis();
+    });
+  }
+
+  function afficherResultatMulti(resultat) {
+    const el = document.getElementById("resultat-route-multi");
+    if (!el) return;
+    el.innerHTML = `
+      <strong>Distance totale :</strong> ${resultat.distance_km.toFixed(1)} km<br>
+      <strong>Durée estimée :</strong> ${Math.round(resultat.duree_min)} min<br>
+      <strong>Nombre d'étapes :</strong> ${stops.length}
+    `;
+    el.hidden = false;
+  }
+
+  async function ajouterEtape(lat, lon, nom) {
+    stops.push({ lat, lon, nom });
+    afficherStops();
+    majMarqueursEtapes();
+    document.getElementById("recherche-etape").value = "";
+    document.getElementById("btn-ajouter-etape").disabled = true;
+    document.getElementById("suggestions-etape").hidden = true;
+    document.getElementById("bloc-etapes").hidden = stops.length < 2;
+    if (stops.length >= 2) {
+      calculerRouteMulti();
+    }
+  }
+
+  // Recherche d'étape intermédiaire
+  (function setupAutocompleteEtape() {
+    const input = document.getElementById("recherche-etape");
+    const liste = document.getElementById("suggestions-etape");
+    const btnAjouter = document.getElementById("btn-ajouter-etape");
+    let timerEtape, timerEtapeOnline, indexActif = -1;
+    let suggestionsEtape = [];
+
+    function ajouterSuggestionsEtape(lieux, online) {
+      if (!online) { liste.innerHTML = ""; indexActif = -1; suggestionsEtape = []; }
+      lieux.forEach((l) => {
+        const li = document.createElement("li");
+        li.dataset.lat = l.lat;
+        li.dataset.lon = l.lon;
+        li.dataset.nom = l.nom;
+        li.textContent = l.nom;
+        if (online) {
+          li.classList.add("suggestion-online");
+          const tag = document.createElement("span");
+          tag.className = "tag-online";
+          tag.textContent = "en ligne";
+          li.appendChild(tag);
+        }
+        liste.appendChild(li);
+        suggestionsEtape.push({ lat: l.lat, lon: l.lon, nom: l.nom });
+      });
+      btnAjouter.disabled = suggestionsEtape.length === 0;
+      liste.hidden = suggestionsEtape.length === 0;
+    }
+
+    function selectionnerEtape(li) {
+      if (!li) return;
+      ajouterEtape(parseFloat(li.dataset.lat), parseFloat(li.dataset.lon), li.dataset.nom);
+    }
+
+    function naviguerEtape(delta) {
+      const items = liste.querySelectorAll("li");
+      if (!items.length) return;
+      items.forEach((li) => li.classList.remove("suggestion-active"));
+      indexActif += delta;
+      if (indexActif < 0) indexActif = items.length - 1;
+      if (indexActif >= items.length) indexActif = 0;
+      items[indexActif].classList.add("suggestion-active");
+      items[indexActif].scrollIntoView({ block: "nearest" });
+    }
+
+    input.addEventListener("input", () => {
+      clearTimeout(timerEtape);
+      clearTimeout(timerEtapeOnline);
+      indexActif = -1;
+      suggestionsEtape = [];
+      btnAjouter.disabled = true;
+      const q = input.value.trim();
+      if (q.length < 2) { liste.innerHTML = ""; liste.hidden = true; return; }
+
+      timerEtape = setTimeout(async () => {
+        const lieux = await appelApi(`/api/lieux?q=${encodeURIComponent(q)}`);
+        if (!Array.isArray(lieux)) { liste.hidden = true; return; }
+        ajouterSuggestionsEtape(lieux, false);
+        if (lieux.length < 3 && q.length >= 3) {
+          timerEtapeOnline = setTimeout(async () => {
+            const online = await appelApi(`/api/geocoder?q=${encodeURIComponent(q)}`);
+            if (Array.isArray(online) && online.length > 0) {
+              ajouterSuggestionsEtape(online, true);
+            }
+          }, 500);
+        }
+      }, 200);
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (liste.hidden) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); naviguerEtape(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); naviguerEtape(-1); }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        const actif = liste.querySelector(".suggestion-active");
+        selectionnerEtape(actif || liste.querySelector("li"));
+      }
+      else if (e.key === "Escape") {
+        liste.hidden = true;
+        clearTimeout(timerEtapeOnline);
+      }
+    });
+
+    liste.addEventListener("click", (e) => {
+      const li = e.target.closest("li");
+      if (!li) return;
+      selectionnerEtape(li);
+    });
+
+    liste.addEventListener("mousedown", (e) => e.preventDefault());
+
+    document.addEventListener("click", (e) => {
+      if (!input.contains(e.target) && !liste.contains(e.target)) {
+        liste.innerHTML = "";
+        liste.hidden = true;
+        clearTimeout(timerEtapeOnline);
+        btnAjouter.disabled = true;
+      }
+    });
+  })();
+
+  btnAjouterEtappe = document.getElementById("btn-ajouter-etape");
+  if (btnAjouterEtape) {
+    btnAjouterEtappe.addEventListener("click", () => {
+      const input = document.getElementById("recherche-etape");
+      const nom = input.value.trim();
+      if (!nom) return;
+      // Géocoder directement via l'API
+      appelApi(`/api/geocoder?q=${encodeURIComponent(nom)}`).then((online) => {
+        if (Array.isArray(online) && online.length > 0) {
+          ajouterEtape(online[0].lat, online[0].lon, online[0].nom);
+        } else {
+          // Essayer la base locale
+          appelApi(`/api/lieux?q=${encodeURIComponent(nom)}`).then((lieux) => {
+            if (Array.isArray(lieux) && lieux.length > 0) {
+              ajouterEtape(lieux[0].lat, lieux[0].lon, lieux[0].nom);
+            } else {
+              alert("Lieu introuvable.");
+            }
+          });
+        }
+      });
+    });
+  }
+
+  // --------------------------------------------------------- autocomplete origine/destination
   function setupAutocomplete(inputId, suggestionsId, type) {
     const input    = document.getElementById(inputId);
     const liste    = document.getElementById(suggestionsId);
     const pointKey = type === "origine" ? "originePoint" : "destinationPoint";
     const texteKey = type === "origine" ? "origineTexte" : "destinationTexte";
-    let timerLocal, timerOnline;
+    let timerLocal, timerOnline, indexActif = -1;
 
     function ajouterSuggestions(lieux, online) {
-      if (!online) liste.innerHTML = "";
+      if (!online) { liste.innerHTML = ""; indexActif = -1; }
       lieux.forEach((l) => {
         const li = document.createElement("li");
         li.dataset.lat = l.lat;
@@ -301,10 +521,72 @@
       liste.hidden = liste.children.length === 0;
     }
 
+    function selectionner(li) {
+      if (!li) return;
+      const lat = parseFloat(li.dataset.lat);
+      const lon = parseFloat(li.dataset.lon);
+      const nom = li.dataset.nom;
+      input.value = nom;
+      liste.innerHTML = "";
+      liste.hidden = true;
+      clearTimeout(timerOnline);
+      indexActif = -1;
+
+      // Mode multi-étapes : ajouter au lieu de remplacer
+      if (type === "origine") {
+        if (stops.length === 0) {
+          stops.push({ lat, lon, nom });
+          state.originePoint = { lat, lon };
+          state.origineTexte = nom;
+          placerMarqueur([lat, lon], "origine");
+          carte.flyTo([lat, lon], 11);
+          afficherStops();
+          majMarqueursEtapes();
+        } else if (stops.length >= 1) {
+          // Remplacer l'origine existante
+          stops[0] = { lat, lon, nom };
+          state.originePoint = { lat, lon };
+          state.origineTexte = nom;
+          placerMarqueur([lat, lon], "origine");
+          carte.flyTo([lat, lon], 11);
+          afficherStops();
+          majMarqueursEtapes();
+          if (stops.length >= 2) calculerRouteMulti();
+        }
+      } else {
+        if (stops.length < 2) {
+          // Pas encore d'étapes intermédiaires, définir comme destination
+          while (stops.length < 2) stops.push(null);
+          stops[1] = { lat, lon, nom };
+        } else {
+          // Remplacer la dernière étape (arrivée)
+          stops[stops.length - 1] = { lat, lon, nom };
+        }
+        state.destinationPoint = { lat, lon };
+        state.destinationTexte = nom;
+        placerMarqueur([lat, lon], "destination");
+        carte.flyTo([lat, lon], 11);
+        afficherStops();
+        majMarqueursEtapes();
+        if (stops.length >= 2) calculerRouteMulti();
+      }
+    }
+
+    function naviguer(delta) {
+      const items = liste.querySelectorAll("li");
+      if (!items.length) return;
+      items.forEach((li) => li.classList.remove("suggestion-active"));
+      indexActif += delta;
+      if (indexActif < 0) indexActif = items.length - 1;
+      if (indexActif >= items.length) indexActif = 0;
+      items[indexActif].classList.add("suggestion-active");
+      items[indexActif].scrollIntoView({ block: "nearest" });
+    }
+
     input.addEventListener("input", () => {
-      state[pointKey] = null;
       clearTimeout(timerLocal);
       clearTimeout(timerOnline);
+      indexActif = -1;
       const q = input.value.trim();
       if (q.length < 2) { liste.innerHTML = ""; liste.hidden = true; return; }
 
@@ -313,7 +595,6 @@
         if (!Array.isArray(lieux)) { liste.hidden = true; return; }
         ajouterSuggestions(lieux, false);
 
-        // Complément en ligne si peu de résultats locaux
         if (lieux.length < 3 && q.length >= 3) {
           timerOnline = setTimeout(async () => {
             const online = await appelApi(`/api/geocoder?q=${encodeURIComponent(q)}`);
@@ -325,21 +606,29 @@
       }, 200);
     });
 
+    input.addEventListener("keydown", (e) => {
+      if (liste.hidden) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); naviguer(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); naviguer(-1); }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        const actif = liste.querySelector(".suggestion-active");
+        selectionner(actif || liste.querySelector("li"));
+      }
+      else if (e.key === "Escape") {
+        liste.hidden = true;
+        clearTimeout(timerOnline);
+      }
+    });
+
     liste.addEventListener("click", (e) => {
       const li = e.target.closest("li");
       if (!li) return;
-      const lat = parseFloat(li.dataset.lat);
-      const lon = parseFloat(li.dataset.lon);
-      const nom = li.dataset.nom;
-      input.value = nom;
-      liste.innerHTML = "";
-      liste.hidden = true;
-      clearTimeout(timerOnline);
-      state[pointKey] = { lat, lon };
-      state[texteKey] = nom;
-      placerMarqueur([lat, lon], type);
-      carte.flyTo([lat, lon], 11);
-      if (state.originePoint && state.destinationPoint) calculerItineraireAuto();
+      selectionner(li);
+    });
+
+    liste.addEventListener("mousedown", (e) => {
+      e.preventDefault();
     });
 
     document.addEventListener("click", (e) => {

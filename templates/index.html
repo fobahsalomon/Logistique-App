@@ -54,6 +54,16 @@
         </div>
       </div>
 
+      <div id="bloc-etapes" class="stops-bloc" hidden>
+        <h3 class="stops-title">Étapes du trajet</h3>
+        <ul id="liste-etapes" class="stops-liste"></ul>
+        <div class="stops-add">
+          <input id="recherche-etape" placeholder="Ajouter une étape intermédiaire…" autocomplete="off">
+          <ul id="suggestions-etape" class="autocomplete-liste" hidden></ul>
+          <button id="btn-ajouter-etape" class="btn btn-sm" disabled>+ Étape</button>
+        </div>
+      </div>
+
       <details class="details-carte">
         <summary class="lien-secondaire">Lieu introuvable ? Cliquez directement sur la carte</summary>
         <div class="field mode-clic">

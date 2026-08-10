@@ -196,6 +196,52 @@ def api_itineraire():
     })
 
 
+@app.post("/api/itineraire-multi")
+def api_itineraire_multi():
+    payload = request.get_json(force=True) or {}
+    coords = (payload.get("coords") or "").strip()
+    if not coords:
+        return jsonify({"statut": "erreur", "message": "Coordonnées manquantes."}), 400
+    points = []
+    for paire in coords.split(";"):
+        lon_s, lat_s = paire.split(",")
+        points.append((float(lon_s), float(lat_s)))
+    if len(points) < 2:
+        return jsonify({"statut": "erreur", "message": "Au moins 2 points requis."}), 400
+
+    # OSRM ne calcule pas nativement le multi-arrêts en une seule requête optimisée ;
+    # on enchaîne les segments et on additionne distances/durées/géométries.
+    distance_totale = 0.0
+    duree_totale = 0.0
+    geometries = []
+    for i in range(len(points) - 1):
+        o, d = points[i], points[i + 1]
+        try:
+            itineraire = calculer_itineraire(get_client(), o, d)
+        except RoutingError as exc:
+            return jsonify({"statut": "erreur", "message": str(exc)}), 200
+        distance_totale += itineraire.distance_km
+        duree_totale += itineraire.duree_min
+        geometries.append(itineraire.geometrie)
+
+    fusion = {"type": "LineString", "coordinates": []}
+    for geo in geometries:
+        if geo and geo.get("coordinates"):
+            coords_geo = geo["coordinates"]
+            if not fusion["coordinates"]:
+                fusion["coordinates"].extend(coords_geo)
+            else:
+                fusion["coordinates"].extend(coords_geo[1:])
+
+    return jsonify({
+        "statut": "ors",
+        "distance_km": round(distance_totale, 1),
+        "duree_min": round(duree_totale),
+        "message": f"Itinéraire multi-étapes : {round(distance_totale, 1)} km, ~{round(duree_totale)} min",
+        "geometrie": fusion,
+    })
+
+
 @app.post("/api/trajet")
 def api_enregistrer_trajet():
     payload = request.get_json(force=True) or {}
