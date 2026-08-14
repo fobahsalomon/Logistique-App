@@ -42,23 +42,73 @@ def get_client(api_key: str = ""):
     return None
 
 
-def _geocoder_nominatim(texte: str) -> PointGeocode | None:
-    """Appel Nominatim avec respect de la limite 1 req/s."""
+def _respecter_limite_nominatim() -> None:
     global _last_nominatim_call
     elapsed = time.time() - _last_nominatim_call
     if elapsed < 1.1:
         time.sleep(1.1 - elapsed)
+
+
+def _appeler_nominatim(params: dict) -> list[dict]:
+    global _last_nominatim_call
+    _respecter_limite_nominatim()
+    rep = requests.get(
+        f"{NOMINATIM_BASE}/search",
+        params={**params, "format": "json", "countrycodes": "ci", "accept-language": "fr"},
+        headers={"User-Agent": _UA},
+        timeout=10,
+    )
+    _last_nominatim_call = time.time()
+    rep.raise_for_status()
+    return rep.json()
+
+
+def _separer_rue_quartier(texte: str) -> tuple[str, str] | None:
+    """Sépare une saisie « Rue X, Quartier » sur la dernière virgule.
+
+    Renvoie None si la saisie ne contient pas de virgule (simple nom de lieu,
+    pas une adresse rue+quartier).
+    """
+    if "," not in texte:
+        return None
+    rue, _, quartier = texte.rpartition(",")
+    rue, quartier = rue.strip(), quartier.strip()
+    if not rue or not quartier:
+        return None
+    return rue, quartier
+
+
+def _geocoder_nominatim_structure(rue: str, quartier: str) -> PointGeocode | None:
+    """Recherche structurée : rue et quartier sont envoyés comme champs distincts.
+
+    Contrairement à une requête `q=` en texte libre, Nominatim doit ici faire
+    correspondre les DEUX champs indépendamment plutôt que de classer un
+    unique blob de texte par pertinence globale — ce qui évite qu'une rue
+    homonyme dans un autre quartier soit renvoyée en silence.
+    """
     try:
-        rep = requests.get(
-            f"{NOMINATIM_BASE}/search",
-            params={"q": texte, "format": "json", "limit": 1,
-                    "countrycodes": "ci", "accept-language": "fr"},
-            headers={"User-Agent": _UA},
-            timeout=10,
-        )
-        _last_nominatim_call = time.time()
-        rep.raise_for_status()
-        data = rep.json()
+        data = _appeler_nominatim({"street": rue, "city": quartier, "limit": 1})
+    except Exception:
+        return None
+    if not data:
+        return None
+    r = data[0]
+    return PointGeocode(lat=float(r["lat"]), lon=float(r["lon"]),
+                        label=r.get("display_name", f"{rue}, {quartier}"))
+
+
+def _geocoder_nominatim(texte: str) -> PointGeocode | None:
+    """Géocode un texte libre. Si le texte a la forme « Rue, Quartier »,
+    tente d'abord une recherche structurée (voir _geocoder_nominatim_structure)
+    avant de retomber sur la recherche en texte libre historique."""
+    separe = _separer_rue_quartier(texte)
+    if separe is not None:
+        point = _geocoder_nominatim_structure(*separe)
+        if point is not None:
+            return point
+
+    try:
+        data = _appeler_nominatim({"q": texte, "limit": 1})
         if not data:
             return None
         r = data[0]
@@ -70,48 +120,57 @@ def _geocoder_nominatim(texte: str) -> PointGeocode | None:
         raise RoutingError(f"Géocodage échoué pour « {texte} » : {exc}") from exc
 
 
+_TYPES_ADRESSE = {
+    "house", "street", "residential", "commercial", "road",
+    "neighbourhood", "quarter", "suburb", "city", "town", "village",
+    "hamlet", "isolated_dwelling",
+}
+
+
 def _geocoder_nominatim_multi(texte: str, limit: int = 8) -> list[PointGeocode]:
     """Interroge Nominatim et garde les résultats qui ressemblent à des adresses.
 
-    Filtre sur les types OSM utiles pour des rues, numéros, quartiers ou
-    intersections en Côte d'Ivoire. Le respect de la limite 1 req/s est
-    conservé via le même verrou global que `_geocoder_nominatim`.
+    Si la saisie a la forme « Rue, Quartier », une recherche structurée est
+    lancée en premier : elle force Nominatim à faire correspondre la rue ET
+    le quartier indépendamment, au lieu de classer par pertinence globale un
+    seul blob de texte libre (ce qui peut faire remonter une rue homonyme
+    située dans un tout autre quartier). Les résultats structurés sont donc
+    placés en tête de liste ; la recherche en texte libre complète ensuite
+    pour ne pas perdre de couverture.
     """
-    global _last_nominatim_call
-    elapsed = time.time() - _last_nominatim_call
-    if elapsed < 1.1:
-        time.sleep(1.1 - elapsed)
-    types_adresse = {
-        "house", "street", "residential", "commercial", "road",
-        "neighbourhood", "quarter", "suburb", "city", "town", "village",
-        "hamlet", "isolated_dwelling",
-    }
+    resultats: list[PointGeocode] = []
+    vus: set[tuple[float, float]] = set()
+
+    def ajouter(candidats):
+        for c in candidats:
+            cle = (round(c.lat, 5), round(c.lon, 5))
+            if cle not in vus:
+                vus.add(cle)
+                resultats.append(c)
+
+    separe = _separer_rue_quartier(texte)
+    if separe is not None:
+        rue, quartier = separe
+        try:
+            data = _appeler_nominatim({"street": rue, "city": quartier, "limit": limit})
+            ajouter(
+                PointGeocode(lat=float(r["lat"]), lon=float(r["lon"]), label=r.get("display_name", texte))
+                for r in data
+            )
+        except Exception:
+            pass
+
     try:
-        rep = requests.get(
-            f"{NOMINATIM_BASE}/search",
-            params={"q": texte, "format": "json", "limit": limit,
-                    "countrycodes": "ci", "accept-language": "fr",
-                    "addressdetails": 1},
-            headers={"User-Agent": _UA},
-            timeout=10,
+        data = _appeler_nominatim({"q": texte, "limit": limit, "addressdetails": 1})
+        candidats = (
+            PointGeocode(lat=float(r["lat"]), lon=float(r["lon"]), label=r.get("display_name", ""))
+            for r in data if r.get("type", "") in _TYPES_ADRESSE
         )
-        _last_nominatim_call = time.time()
-        rep.raise_for_status()
-        data = rep.json()
-        resultats: list[PointGeocode] = []
-        for r in data:
-            type_osm = r.get("type", "")
-            adresse = r.get("display_name", "")
-            if type_osm not in types_adresse:
-                continue
-            resultats.append(PointGeocode(
-                lat=float(r["lat"]),
-                lon=float(r["lon"]),
-                label=adresse,
-            ))
-        return resultats
+        ajouter(candidats)
     except Exception:
-        return []
+        pass
+
+    return resultats[:limit]
 
 
 def geocoder(client, texte: str) -> PointGeocode | None:
