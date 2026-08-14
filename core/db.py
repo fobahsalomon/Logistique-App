@@ -385,3 +385,15 @@ def aucun_utilisateur(conn: sqlite3.Connection | None = None) -> bool:
     if close:
         conn.close()
     return total == 0
+
+
+def supprimer_utilisateur(username: str, conn: sqlite3.Connection | None = None) -> bool:
+    """Supprime un compte par son nom d'utilisateur. Renvoie True s'il existait."""
+    close = conn is None
+    conn = conn or get_connection()
+    cur = conn.execute("DELETE FROM utilisateurs WHERE username = ?", (username,))
+    conn.commit()
+    supprime = cur.rowcount > 0
+    if close:
+        conn.close()
+    return supprime

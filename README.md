@@ -100,12 +100,17 @@ relancez `python app.py` pour qu'il soit pris en compte. Seul le hash du mot
 de passe est écrit en base — jamais le mot de passe en clair, et jamais
 dans un fichier commité dans git (`.env` est dans `.gitignore`).
 
-Pour ajouter ou modifier un compte sans redémarrer l'app, vous pouvez aussi
-utiliser Python directement :
+Pour ajouter, modifier ou supprimer un compte sans redémarrer l'app, vous
+pouvez aussi utiliser Python directement :
 
 ```bash
 python -c "from core.db import definir_mot_de_passe; definir_mot_de_passe('nouveau', 'motdepasse')"
+python -c "from core.db import supprimer_utilisateur; supprimer_utilisateur('ancien-collegue')"
 ```
+
+Il n'y a pas de page d'administration dans l'app : la gestion des comptes
+se fait via `AUTH_USERS` (Render) ou ces commandes (local), ce qui suffit
+pour un usage à quelques personnes.
 
 **Sur Render**, définissez `SECRET_KEY` et `AUTH_USERS` dans les variables
 d'environnement du service (Dashboard → Environment) — jamais dans le code

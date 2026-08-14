@@ -110,6 +110,19 @@ def test_bootstrap_comptes_env_resynchronise_mot_de_passe(tmp_path, monkeypatch)
     assert verifier_mot_de_passe("salomon", "ancien-mdp") is None
 
 
+def test_supprimer_utilisateur(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
+    from core.db import definir_mot_de_passe, init_db, supprimer_utilisateur, verifier_mot_de_passe
+
+    init_db()
+    definir_mot_de_passe("a-retirer", "motdepasse")
+    assert verifier_mot_de_passe("a-retirer", "motdepasse") is not None
+
+    assert supprimer_utilisateur("a-retirer") is True
+    assert verifier_mot_de_passe("a-retirer", "motdepasse") is None
+    assert supprimer_utilisateur("a-retirer") is False  # déjà supprimé
+
+
 def test_page_accueil(client):
     rep = client.get("/")
     assert rep.status_code == 200
