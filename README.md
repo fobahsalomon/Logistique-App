@@ -24,27 +24,30 @@ Interface 100 % custom (HTML/CSS/JS + Leaflet) — aucun framework de dashboard.
 - **Recalcul explicite** du devis après modification des paramètres
 - **Sélecteur de catégorie** de car (63, 58 VIP, 51, 49 places)
 - **Interface responsive** adaptée aux mobiles
+- **Application protégée par login** (Flask-Login) : toute l'app nécessite une
+  session authentifiée, y compris l'API JSON
 
 ## Architecture
 
 ```
-├── app.py                        # backend Flask (10 endpoints API JSON + PDF)
+├── app.py                        # backend Flask (10 endpoints API JSON + PDF + auth)
 ├── core/
 │   ├── routing.py                # OSRM + Nominatim + Overpass (sans clé API)
 │   ├── osm_overpass.py           # geocodage de secours via Overpass API
 │   ├── pricing.py                # moteur de calcul du devis (formules Excel)
 │   ├── devis_service.py          # validation et sérialisation des devis
 │   ├── devis_pdf.py              # génération PDF via ReportLab
-│   └── db.py                     # SQLite : trajets + lieux_connus
+│   └── db.py                     # SQLite : trajets + lieux_connus + utilisateurs
 ├── data/
 │   ├── seed_trajets.py           # 70 trajets connus (peuplement idempotent)
 │   ├── migrer_canonicaliser_trajets.py  # harmonise SP/ABJ → SAN PEDRO/ABIDJAN
 │   ├── import_geonames.py        # import GeoNames CI (~16 917 lieux)
 │   └── import_osm.py             # import OSM CI via pyosmium (~60 Mo)
 ├── templates/index.html
+├── templates/login.html
 ├── static/css/style.css
 ├── static/js/app.js
-└── tests/test_app.py             # 26 tests (pytest)
+└── tests/test_app.py             # tests (pytest)
 ```
 
 ## Installation
@@ -73,11 +76,44 @@ python data/import_osm.py
 
 Ces deux commandes sont **idempotentes** : relancer n'insère pas de doublons.
 
+## Authentification
+
+Toute l'application (pages et API) nécessite d'être connecté. Aucun compte
+n'est livré avec le dépôt — vous devez en configurer au moins un.
+
+Copiez `.env.example` vers `.env` et complétez :
+
+```bash
+cp .env.example .env
+```
+
+```
+SECRET_KEY=<généré avec: python -c "import secrets; print(secrets.token_hex(32))">
+AUTH_USERS=salomon:votre-mot-de-passe,collegue:autre-mot-de-passe
+```
+
+`AUTH_USERS` crée automatiquement les comptes manquants au démarrage de
+l'application (format `identifiant:motdepasse`, séparés par des virgules).
+Seul le hash du mot de passe est écrit en base — jamais le mot de passe en
+clair, et jamais dans un fichier commité dans git (`.env` est dans
+`.gitignore`).
+
+Pour ajouter un compte sans redémarrer l'app, vous pouvez aussi utiliser
+Python directement :
+
+```bash
+python -c "from core.db import creer_utilisateur; creer_utilisateur('nouveau', 'motdepasse')"
+```
+
+**Sur Render**, définissez `SECRET_KEY` et `AUTH_USERS` dans les variables
+d'environnement du service (Dashboard → Environment) — jamais dans le code
+ni dans `data/ca_trans.db` committé.
+
 ## Lancement local
 
 ```bash
 python app.py
-# → http://localhost:5000
+# → http://localhost:5000 (redirige vers /login si aucune session active)
 ```
 
 ## Tests
@@ -86,15 +122,18 @@ python app.py
 pytest tests/
 ```
 
-26 tests couvrent le moteur de calcul, les endpoints API (dont PDF), le CRUD trajets
-et l'autocomplétion.
+Les tests couvrent le moteur de calcul, l'authentification, les endpoints
+API (dont PDF), le CRUD trajets et l'autocomplétion.
 
 ## Déploiement sur Render
 
 1. Poussez sur GitHub et connectez le dépôt sur [Render](https://render.com).
 2. Render détecte `render.yaml` automatiquement (build : `pip install -r
    requirements.txt`, start : `gunicorn app:app`).
-3. La base SQLite (`data/ca_trans.db`, avec les 70 trajets connus + ~35 000
+3. Définissez `SECRET_KEY` et `AUTH_USERS` dans les variables d'environnement
+   du service (voir section Authentification ci-dessus) — sans `AUTH_USERS`,
+   personne ne pourra se connecter.
+4. La base SQLite (`data/ca_trans.db`, avec les 70 trajets connus + ~35 000
    lieux GeoNames/OSM déjà importés) est **committée dans le repo** pour
    survivre au système de fichiers éphémère du plan gratuit Render. Toute
    modification faite en production (nouveaux trajets, lieux ajoutés au clic)

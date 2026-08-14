@@ -12,6 +12,10 @@
   <header class="topbar">
     <div class="brand">CA TRANS<span>.</span></div>
     <div class="subtitle">Fiche de calcul convoi</div>
+    <div class="compte">
+      <span class="compte-nom">{{ current_user.username }}</span>
+      <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
+    </div>
   </header>
 
   <main class="layout">

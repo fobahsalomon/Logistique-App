@@ -5,6 +5,8 @@ import sqlite3
 import unicodedata
 from pathlib import Path
 
+from werkzeug.security import check_password_hash, generate_password_hash
+
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "ca_trans.db"
 
 ABBREVIATIONS = {
@@ -52,6 +54,16 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_lieux_nom_normalise ON lieux_connus(nom_normalise)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS utilisateurs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
     )
     conn.commit()
     if close:
@@ -279,3 +291,64 @@ def inserer_lieu(
     if close:
         conn.close()
     return lieu_id
+
+
+# ------------------------------------------------------------- utilisateurs
+
+def creer_utilisateur(
+    username: str, password: str, conn: sqlite3.Connection | None = None
+) -> int | None:
+    """Crée un compte (mot de passe haché). Idempotent : si le nom d'utilisateur
+    existe déjà, ne fait rien et renvoie son id existant."""
+    close = conn is None
+    conn = conn or get_connection()
+    existant = conn.execute(
+        "SELECT id FROM utilisateurs WHERE username = ?", (username,)
+    ).fetchone()
+    if existant:
+        if close:
+            conn.close()
+        return existant["id"]
+    cur = conn.execute(
+        "INSERT INTO utilisateurs (username, password_hash) VALUES (?, ?)",
+        (username, generate_password_hash(password)),
+    )
+    conn.commit()
+    user_id = cur.lastrowid
+    if close:
+        conn.close()
+    return user_id
+
+
+def obtenir_utilisateur_par_id(
+    user_id: int, conn: sqlite3.Connection | None = None
+) -> sqlite3.Row | None:
+    close = conn is None
+    conn = conn or get_connection()
+    row = conn.execute("SELECT * FROM utilisateurs WHERE id = ?", (user_id,)).fetchone()
+    if close:
+        conn.close()
+    return row
+
+
+def verifier_mot_de_passe(
+    username: str, password: str, conn: sqlite3.Connection | None = None
+) -> sqlite3.Row | None:
+    """Renvoie la ligne utilisateur si identifiant + mot de passe sont valides, sinon None."""
+    close = conn is None
+    conn = conn or get_connection()
+    row = conn.execute("SELECT * FROM utilisateurs WHERE username = ?", (username,)).fetchone()
+    if close:
+        conn.close()
+    if row is None or not check_password_hash(row["password_hash"], password):
+        return None
+    return row
+
+
+def aucun_utilisateur(conn: sqlite3.Connection | None = None) -> bool:
+    close = conn is None
+    conn = conn or get_connection()
+    total = conn.execute("SELECT COUNT(*) FROM utilisateurs").fetchone()[0]
+    if close:
+        conn.close()
+    return total == 0

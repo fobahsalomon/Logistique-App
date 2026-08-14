@@ -43,6 +43,19 @@ html, body {
   color: var(--text-muted);
 }
 
+.compte {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.compte-nom {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 1.6fr 1fr;
@@ -615,3 +628,24 @@ select:focus { border-color: var(--yellow); }
   font-weight: 600;
 }
 .adresse-bloc { margin: 8px 0 10px; }
+
+/* -------------------------------------------------------------- connexion */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.login-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 32px;
+  width: 100%;
+  max-width: 360px;
+}
+.login-card .brand { margin-bottom: 2px; }
+.login-card .subtitle { margin-bottom: 22px; }
+.login-card form { margin-top: 18px; }
+.login-submit { width: 100%; margin-top: 6px; }

@@ -19,11 +19,77 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr("core.db.DB_PATH", db_path)
     monkeypatch.setattr("core.routing.resoudre_itineraire", _routing_indisponible)
     monkeypatch.setattr("core.routing.calculer_itineraire", _routing_indisponible)
+    app_module.app.secret_key = "cle-de-test"
     app_module.init_db()
     app_module.seed_trajets()
+    app_module.creer_utilisateur("testuser", "testpass")
+    app_module.app.config.update(TESTING=True)
+    with app_module.app.test_client() as c:
+        c.post("/login", data={"username": "testuser", "password": "testpass"})
+        yield c
+
+
+@pytest.fixture()
+def client_anonyme(tmp_path, monkeypatch):
+    """Client de test SANS session authentifiée, pour vérifier la protection des routes."""
+    db_path = tmp_path / "test.db"
+    monkeypatch.setattr("core.db.DB_PATH", db_path)
+    app_module.app.secret_key = "cle-de-test"
+    app_module.init_db()
+    app_module.seed_trajets()
+    app_module.creer_utilisateur("testuser", "testpass")
     app_module.app.config.update(TESTING=True)
     with app_module.app.test_client() as c:
         yield c
+
+
+def test_page_sans_connexion_redirige_vers_login(client_anonyme):
+    rep = client_anonyme.get("/", follow_redirects=False)
+    assert rep.status_code == 302
+    assert "/login" in rep.headers["Location"]
+
+
+def test_api_sans_connexion_redirige_vers_login(client_anonyme):
+    rep = client_anonyme.get("/api/trajets", follow_redirects=False)
+    assert rep.status_code == 302
+    assert "/login" in rep.headers["Location"]
+
+
+def test_login_identifiants_valides(client_anonyme):
+    rep = client_anonyme.post(
+        "/login", data={"username": "testuser", "password": "testpass"}, follow_redirects=False
+    )
+    assert rep.status_code == 302
+    rep2 = client_anonyme.get("/")
+    assert rep2.status_code == 200
+
+
+def test_login_identifiants_invalides(client_anonyme):
+    rep = client_anonyme.post("/login", data={"username": "testuser", "password": "mauvais"})
+    assert rep.status_code == 401
+    assert "incorrect".encode() in rep.data.lower()
+
+
+def test_logout_puis_acces_refuse(client):
+    rep = client.get("/logout", follow_redirects=False)
+    assert rep.status_code == 302
+    rep2 = client.get("/api/trajets", follow_redirects=False)
+    assert rep2.status_code == 302
+    assert "/login" in rep2.headers["Location"]
+
+
+def test_bootstrap_comptes_env(tmp_path, monkeypatch):
+    """AUTH_USERS crée les comptes manquants au démarrage, sans écraser les existants."""
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
+    monkeypatch.setenv("AUTH_USERS", "alice:motdepasse1, bob:motdepasse2")
+    app_module.init_db()
+    app_module._bootstrap_comptes_env()
+
+    from core.db import verifier_mot_de_passe
+
+    assert verifier_mot_de_passe("alice", "motdepasse1") is not None
+    assert verifier_mot_de_passe("bob", "motdepasse2") is not None
+    assert verifier_mot_de_passe("bob", "mauvais") is None
 
 
 def test_page_accueil(client):

@@ -5,19 +5,31 @@ Moteur de devis reproduisant exactement les formules Excel d'origine.
 """
 
 import os
+import secrets as secrets_module
 from io import BytesIO
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
+from flask_login import (
+    LoginManager,
+    UserMixin,
+    current_user,
+    login_required,
+    login_user,
+    logout_user,
+)
 
 from core.db import (
+    creer_utilisateur,
     init_db,
     inserer_lieu,
     inserer_trajet,
     list_trajets,
     mettre_a_jour_trajet,
+    obtenir_utilisateur_par_id,
     rechercher_lieux,
     rechercher_trajet,
     supprimer_trajet,
+    verifier_mot_de_passe,
 )
 from core.devis_pdf import generer_pdf_devis
 from core.devis_service import DevisValidationError, devis_input_from_payload, serialiser_devis
@@ -33,9 +45,87 @@ except ImportError:
 
 app = Flask(__name__)
 
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    print(
+        "ATTENTION : SECRET_KEY non définie — utilisation d'une clé de session "
+        "générée aléatoirement (les connexions ne survivront pas à un redémarrage). "
+        "À ne jamais laisser ainsi en production, définissez SECRET_KEY."
+    )
+    _secret_key = secrets_module.token_hex(32)
+app.secret_key = _secret_key
+
+
+def _bootstrap_comptes_env() -> None:
+    """Crée les comptes définis dans AUTH_USERS (format "user:pass,user2:pass2")
+    s'ils n'existent pas déjà. Ne stocke jamais les mots de passe en clair —
+    seul le hash est écrit en base."""
+    brut = os.environ.get("AUTH_USERS", "")
+    for paire in brut.split(","):
+        paire = paire.strip()
+        if not paire or ":" not in paire:
+            continue
+        username, _, password = paire.partition(":")
+        username, password = username.strip(), password.strip()
+        if username and password:
+            creer_utilisateur(username, password)
+
+
 with app.app_context():
     init_db()
     seed_trajets()  # idempotent : n'insère les 70 trajets connus que si absents
+    _bootstrap_comptes_env()
+
+
+class Utilisateur(UserMixin):
+    def __init__(self, row):
+        self.id = row["id"]
+        self.username = row["username"]
+
+
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+login_manager.login_message = "Merci de vous connecter pour accéder à l'application."
+
+
+@login_manager.user_loader
+def charger_utilisateur(user_id: str):
+    row = obtenir_utilisateur_par_id(int(user_id))
+    return Utilisateur(row) if row else None
+
+
+@app.before_request
+def exiger_connexion():
+    """Protège toute l'application par défaut : seules /login et les fichiers
+    statiques restent accessibles sans session valide."""
+    endpoints_publics = {"login", "static"}
+    if request.endpoint in endpoints_publics or current_user.is_authenticated:
+        return None
+    return login_manager.unauthorized()
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+
+    if request.method == "GET":
+        return render_template("login.html", erreur=None)
+
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+    row = verifier_mot_de_passe(username, password)
+    if row is None:
+        return render_template("login.html", erreur="Identifiant ou mot de passe incorrect."), 401
+    login_user(Utilisateur(row))
+    return redirect(request.args.get("next") or url_for("index"))
+
+
+@app.get("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
 
 
 def get_api_key() -> str:
