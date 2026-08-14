@@ -38,6 +38,7 @@ Interface 100 % custom (HTML/CSS/JS + Leaflet) — aucun framework de dashboard.
 │   └── db.py                     # SQLite : trajets + lieux_connus
 ├── data/
 │   ├── seed_trajets.py           # 70 trajets connus (peuplement idempotent)
+│   ├── migrer_canonicaliser_trajets.py  # harmonise SP/ABJ → SAN PEDRO/ABIDJAN
 │   ├── import_geonames.py        # import GeoNames CI (~16 917 lieux)
 │   └── import_osm.py             # import OSM CI via pyosmium (~60 Mo)
 ├── templates/index.html
