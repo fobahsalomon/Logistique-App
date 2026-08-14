@@ -320,6 +320,39 @@ def creer_utilisateur(
     return user_id
 
 
+def definir_mot_de_passe(
+    username: str, password: str, conn: sqlite3.Connection | None = None
+) -> int:
+    """Crée le compte s'il n'existe pas, sinon met à jour son mot de passe.
+
+    Contrairement à creer_utilisateur (insert-only, pour une création
+    manuelle ponctuelle), cette fonction fait de `password` la valeur de
+    référence — utilisée par le bootstrap AUTH_USERS pour que le mot de
+    passe reste synchronisé avec la variable d'environnement à chaque
+    démarrage, plutôt que de rester figé sur la première valeur créée."""
+    close = conn is None
+    conn = conn or get_connection()
+    password_hash = generate_password_hash(password)
+    cur = conn.execute(
+        "UPDATE utilisateurs SET password_hash = ? WHERE username = ?",
+        (password_hash, username),
+    )
+    if cur.rowcount == 0:
+        cur = conn.execute(
+            "INSERT INTO utilisateurs (username, password_hash) VALUES (?, ?)",
+            (username, password_hash),
+        )
+        user_id = cur.lastrowid
+    else:
+        user_id = conn.execute(
+            "SELECT id FROM utilisateurs WHERE username = ?", (username,)
+        ).fetchone()["id"]
+    conn.commit()
+    if close:
+        conn.close()
+    return user_id
+
+
 def obtenir_utilisateur_par_id(
     user_id: int, conn: sqlite3.Connection | None = None
 ) -> sqlite3.Row | None:

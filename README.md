@@ -92,17 +92,19 @@ SECRET_KEY=<généré avec: python -c "import secrets; print(secrets.token_hex(3
 AUTH_USERS=salomon:votre-mot-de-passe,collegue:autre-mot-de-passe
 ```
 
-`AUTH_USERS` crée automatiquement les comptes manquants au démarrage de
-l'application (format `identifiant:motdepasse`, séparés par des virgules).
-Seul le hash du mot de passe est écrit en base — jamais le mot de passe en
-clair, et jamais dans un fichier commité dans git (`.env` est dans
-`.gitignore`).
+`AUTH_USERS` fait foi à chaque démarrage de l'application (format
+`identifiant:motdepasse`, séparés par des virgules) : les comptes manquants
+sont créés, et le mot de passe d'un compte existant est resynchronisé sur
+la valeur courante de la variable — changez le mot de passe dans `.env` puis
+relancez `python app.py` pour qu'il soit pris en compte. Seul le hash du mot
+de passe est écrit en base — jamais le mot de passe en clair, et jamais
+dans un fichier commité dans git (`.env` est dans `.gitignore`).
 
-Pour ajouter un compte sans redémarrer l'app, vous pouvez aussi utiliser
-Python directement :
+Pour ajouter ou modifier un compte sans redémarrer l'app, vous pouvez aussi
+utiliser Python directement :
 
 ```bash
-python -c "from core.db import creer_utilisateur; creer_utilisateur('nouveau', 'motdepasse')"
+python -c "from core.db import definir_mot_de_passe; definir_mot_de_passe('nouveau', 'motdepasse')"
 ```
 
 **Sur Render**, définissez `SECRET_KEY` et `AUTH_USERS` dans les variables

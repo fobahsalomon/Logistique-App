@@ -22,7 +22,7 @@ def client(tmp_path, monkeypatch):
     app_module.app.secret_key = "cle-de-test"
     app_module.init_db()
     app_module.seed_trajets()
-    app_module.creer_utilisateur("testuser", "testpass")
+    app_module.definir_mot_de_passe("testuser", "testpass")
     app_module.app.config.update(TESTING=True)
     with app_module.app.test_client() as c:
         c.post("/login", data={"username": "testuser", "password": "testpass"})
@@ -37,7 +37,7 @@ def client_anonyme(tmp_path, monkeypatch):
     app_module.app.secret_key = "cle-de-test"
     app_module.init_db()
     app_module.seed_trajets()
-    app_module.creer_utilisateur("testuser", "testpass")
+    app_module.definir_mot_de_passe("testuser", "testpass")
     app_module.app.config.update(TESTING=True)
     with app_module.app.test_client() as c:
         yield c
@@ -79,7 +79,7 @@ def test_logout_puis_acces_refuse(client):
 
 
 def test_bootstrap_comptes_env(tmp_path, monkeypatch):
-    """AUTH_USERS crée les comptes manquants au démarrage, sans écraser les existants."""
+    """AUTH_USERS crée les comptes manquants au démarrage."""
     monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
     monkeypatch.setenv("AUTH_USERS", "alice:motdepasse1, bob:motdepasse2")
     app_module.init_db()
@@ -90,6 +90,24 @@ def test_bootstrap_comptes_env(tmp_path, monkeypatch):
     assert verifier_mot_de_passe("alice", "motdepasse1") is not None
     assert verifier_mot_de_passe("bob", "motdepasse2") is not None
     assert verifier_mot_de_passe("bob", "mauvais") is None
+
+
+def test_bootstrap_comptes_env_resynchronise_mot_de_passe(tmp_path, monkeypatch):
+    """Régression : un mot de passe changé dans AUTH_USERS doit être repris au
+    redémarrage suivant, pas rester figé sur la première valeur créée."""
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
+    app_module.init_db()
+
+    monkeypatch.setenv("AUTH_USERS", "salomon:ancien-mdp")
+    app_module._bootstrap_comptes_env()
+
+    monkeypatch.setenv("AUTH_USERS", "salomon:nouveau-mdp")
+    app_module._bootstrap_comptes_env()
+
+    from core.db import verifier_mot_de_passe
+
+    assert verifier_mot_de_passe("salomon", "nouveau-mdp") is not None
+    assert verifier_mot_de_passe("salomon", "ancien-mdp") is None
 
 
 def test_page_accueil(client):
