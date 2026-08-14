@@ -19,7 +19,7 @@ from flask_login import (
 )
 
 from core.db import (
-    creer_utilisateur,
+    definir_mot_de_passe,
     init_db,
     inserer_lieu,
     inserer_trajet,
@@ -57,9 +57,11 @@ app.secret_key = _secret_key
 
 
 def _bootstrap_comptes_env() -> None:
-    """Crée les comptes définis dans AUTH_USERS (format "user:pass,user2:pass2")
-    s'ils n'existent pas déjà. Ne stocke jamais les mots de passe en clair —
-    seul le hash est écrit en base."""
+    """Synchronise les comptes définis dans AUTH_USERS (format
+    "user:pass,user2:pass2") à chaque démarrage : AUTH_USERS fait foi, donc
+    un mot de passe changé dans la variable d'environnement est repris ici
+    plutôt que de rester figé sur la première valeur créée. Ne stocke jamais
+    les mots de passe en clair — seul le hash est écrit en base."""
     brut = os.environ.get("AUTH_USERS", "")
     for paire in brut.split(","):
         paire = paire.strip()
@@ -68,7 +70,7 @@ def _bootstrap_comptes_env() -> None:
         username, _, password = paire.partition(":")
         username, password = username.strip(), password.strip()
         if username and password:
-            creer_utilisateur(username, password)
+            definir_mot_de_passe(username, password)
 
 
 with app.app_context():

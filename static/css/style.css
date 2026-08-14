@@ -649,3 +649,21 @@ select:focus { border-color: var(--yellow); }
 .login-card .subtitle { margin-bottom: 22px; }
 .login-card form { margin-top: 18px; }
 .login-submit { width: 100%; margin-top: 6px; }
+
+.login-contact {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.login-contact .muted { margin: 0 0 10px; font-size: 12px; }
+.login-contact ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.login-contact a { color: var(--text); text-decoration: none; }
+.login-contact a:hover { color: var(--yellow); text-decoration: underline; }
