@@ -12,6 +12,10 @@
   <header class="topbar">
     <div class="brand">CA TRANS<span>.</span></div>
     <div class="subtitle">Fiche de calcul convoi</div>
+    <div class="compte">
+      <span class="compte-nom">{{ current_user.username }}</span>
+      <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
+    </div>
   </header>
 
   <main class="layout">
@@ -110,6 +114,7 @@
       <div class="field">
         <label for="nb-places">Catégorie de places du car</label>
         <select id="nb-places">
+          <option value="73">73 places</option>
           <option value="63">63 places</option>
           <option value="58">58 places — VIP</option>
           <option value="51">51 places</option>

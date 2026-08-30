@@ -138,8 +138,8 @@ def generer_pdf_devis(
     elements.extend([Paragraph("Trajet", section), table_trajet])
 
     elements.append(Spacer(1, 12))
-    total_label = "TTC aller-retour après remise" if entree.remise_montant > 0 else "TTC aller-retour"
-    total_montant = resultat.ttc_apres_remise if entree.remise_montant > 0 else resultat.ttc_aller_retour
+    total_label = "Montant HT aller-retour" if entree.remise_montant == 0 else "Montant HT aller-retour (avant remise)"
+    total_montant = resultat.ht_aller_retour
     total = Table(
         [[Paragraph(total_label, label_total), Paragraph(formater_fcfa(total_montant), valeur_total)]],
         colWidths=[8 * cm, 8.6 * cm],

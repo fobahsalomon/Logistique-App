@@ -19,11 +19,108 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr("core.db.DB_PATH", db_path)
     monkeypatch.setattr("core.routing.resoudre_itineraire", _routing_indisponible)
     monkeypatch.setattr("core.routing.calculer_itineraire", _routing_indisponible)
+    app_module.app.secret_key = "cle-de-test"
     app_module.init_db()
     app_module.seed_trajets()
+    app_module.definir_mot_de_passe("testuser", "testpass")
+    app_module.app.config.update(TESTING=True)
+    with app_module.app.test_client() as c:
+        c.post("/login", data={"username": "testuser", "password": "testpass"})
+        yield c
+
+
+@pytest.fixture()
+def client_anonyme(tmp_path, monkeypatch):
+    """Client de test SANS session authentifiée, pour vérifier la protection des routes."""
+    db_path = tmp_path / "test.db"
+    monkeypatch.setattr("core.db.DB_PATH", db_path)
+    app_module.app.secret_key = "cle-de-test"
+    app_module.init_db()
+    app_module.seed_trajets()
+    app_module.definir_mot_de_passe("testuser", "testpass")
     app_module.app.config.update(TESTING=True)
     with app_module.app.test_client() as c:
         yield c
+
+
+def test_page_sans_connexion_redirige_vers_login(client_anonyme):
+    rep = client_anonyme.get("/", follow_redirects=False)
+    assert rep.status_code == 302
+    assert "/login" in rep.headers["Location"]
+
+
+def test_api_sans_connexion_redirige_vers_login(client_anonyme):
+    rep = client_anonyme.get("/api/trajets", follow_redirects=False)
+    assert rep.status_code == 302
+    assert "/login" in rep.headers["Location"]
+
+
+def test_login_identifiants_valides(client_anonyme):
+    rep = client_anonyme.post(
+        "/login", data={"username": "testuser", "password": "testpass"}, follow_redirects=False
+    )
+    assert rep.status_code == 302
+    rep2 = client_anonyme.get("/")
+    assert rep2.status_code == 200
+
+
+def test_login_identifiants_invalides(client_anonyme):
+    rep = client_anonyme.post("/login", data={"username": "testuser", "password": "mauvais"})
+    assert rep.status_code == 401
+    assert "incorrect".encode() in rep.data.lower()
+
+
+def test_logout_puis_acces_refuse(client):
+    rep = client.get("/logout", follow_redirects=False)
+    assert rep.status_code == 302
+    rep2 = client.get("/api/trajets", follow_redirects=False)
+    assert rep2.status_code == 302
+    assert "/login" in rep2.headers["Location"]
+
+
+def test_bootstrap_comptes_env(tmp_path, monkeypatch):
+    """AUTH_USERS crée les comptes manquants au démarrage."""
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
+    monkeypatch.setenv("AUTH_USERS", "alice:motdepasse1, bob:motdepasse2")
+    app_module.init_db()
+    app_module._bootstrap_comptes_env()
+
+    from core.db import verifier_mot_de_passe
+
+    assert verifier_mot_de_passe("alice", "motdepasse1") is not None
+    assert verifier_mot_de_passe("bob", "motdepasse2") is not None
+    assert verifier_mot_de_passe("bob", "mauvais") is None
+
+
+def test_bootstrap_comptes_env_resynchronise_mot_de_passe(tmp_path, monkeypatch):
+    """Régression : un mot de passe changé dans AUTH_USERS doit être repris au
+    redémarrage suivant, pas rester figé sur la première valeur créée."""
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
+    app_module.init_db()
+
+    monkeypatch.setenv("AUTH_USERS", "salomon:ancien-mdp")
+    app_module._bootstrap_comptes_env()
+
+    monkeypatch.setenv("AUTH_USERS", "salomon:nouveau-mdp")
+    app_module._bootstrap_comptes_env()
+
+    from core.db import verifier_mot_de_passe
+
+    assert verifier_mot_de_passe("salomon", "nouveau-mdp") is not None
+    assert verifier_mot_de_passe("salomon", "ancien-mdp") is None
+
+
+def test_supprimer_utilisateur(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
+    from core.db import definir_mot_de_passe, init_db, supprimer_utilisateur, verifier_mot_de_passe
+
+    init_db()
+    definir_mot_de_passe("a-retirer", "motdepasse")
+    assert verifier_mot_de_passe("a-retirer", "motdepasse") is not None
+
+    assert supprimer_utilisateur("a-retirer") is True
+    assert verifier_mot_de_passe("a-retirer", "motdepasse") is None
+    assert supprimer_utilisateur("a-retirer") is False  # déjà supprimé
 
 
 def test_page_accueil(client):
@@ -85,7 +182,7 @@ def test_devis_cas_reference(client):
 
 
 def test_devis_capacites_supportees(client):
-    for capacite in (63, 58, 51, 49):
+    for capacite in (73, 63, 58, 51, 49):
         rep = client.post("/api/devis", json={"distance_km": 100, "nb_places": capacite})
         assert rep.status_code == 200
         data = rep.get_json()

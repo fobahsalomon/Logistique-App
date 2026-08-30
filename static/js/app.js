@@ -642,6 +642,43 @@
     })} F CFA`;
   }
 
+  function normaliserTexte(texte) {
+    return (texte || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9 ]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  function trouverTrajetStandard() {
+    const texteOrigine = normaliserTexte(state.origineTexte || "");
+    const texteDestination = normaliserTexte(state.destinationTexte || "");
+    if (!texteOrigine || !texteDestination || !Array.isArray(trajetsCache) || trajetsCache.length === 0) {
+      return null;
+    }
+
+    const candidats = trajetsCache
+      .filter((t) => Number.isFinite(Number(t.distance_km)))
+      .map((t) => {
+        const origine = normaliserTexte(t.origine);
+        const destination = normaliserTexte(t.destination);
+        let score = 0;
+        if (destination === texteDestination) score += 5;
+        if (origine === texteOrigine) score += 5;
+        if (destination.includes(texteDestination)) score += 2;
+        if (texteDestination.includes(destination)) score += 2;
+        if (origine.includes(texteOrigine)) score += 1;
+        if (texteOrigine.includes(origine)) score += 1;
+        return { ...t, score };
+      })
+      .filter((t) => t.score > 0)
+      .sort((a, b) => b.score - a.score || Math.abs(Number(a.distance_km) - Number(state.distanceKm || 0)) - Math.abs(Number(b.distance_km) - Number(state.distanceKm || 0)));
+
+    return candidats[0] || null;
+  }
+
   async function calculerDevis() {
     const conteneur = document.getElementById("fiche-devis");
     if (!state.distanceKm) {
@@ -649,8 +686,28 @@
       return;
     }
 
+    const versions = [{
+      key: "reel",
+      label: "Itinéraire réel",
+      distance_km: Number(state.distanceKm),
+    }];
+
+    const trajetStandard = trouverTrajetStandard();
+    if (trajetStandard && Number(trajetStandard.distance_km) && Math.abs(Number(trajetStandard.distance_km) - Number(state.distanceKm)) > 1) {
+      versions.push({
+        key: "standard",
+        label: `Trajet standard (${trajetStandard.origine} → ${trajetStandard.destination})`,
+        distance_km: Number(trajetStandard.distance_km),
+      });
+    }
+
+    if (!state.devisSelection || !versions.some((v) => v.key === state.devisSelection)) {
+      state.devisSelection = versions[0].key;
+    }
+    const versionActive = versions.find((v) => v.key === state.devisSelection) || versions[0];
+
     const corps = {
-      distance_km:     state.distanceKm,
+      distance_km:     versionActive.distance_km,
       nb_places:       parseInt(document.getElementById("nb-places").value, 10) || 63,
       conso_100km:     parseFloat(document.getElementById("conso-100km").value) || 0,
       prix_litre:      parseFloat(document.getElementById("prix-litre").value) || 0,
@@ -676,9 +733,16 @@
       .map((p) => `<tr><td>${p.places} places</td><td>${formaterFcfa(p.prix)}</td></tr>`)
       .join("");
 
+    const tabsHtml = versions.length > 1
+      ? `<div class="devis-tabs">${versions.map((v) => `
+          <button type="button" class="devis-tab ${v.key === versionActive.key ? "active" : ""}" data-version="${v.key}">${v.label}</button>
+        `).join("")}</div>`
+      : "";
+
     conteneur.innerHTML = `
+      ${tabsHtml}
       <dl>
-        <dt>Distance aller simple</dt><dd>${state.distanceKm} km</dd>
+        <dt>Distance sélectionnée</dt><dd>${versionActive.distance_km.toFixed(1)} km</dd>
         <dt>Consommation totale</dt><dd>${r.consommation_totale.toFixed(2)} L</dd>
         <dt>Coût carburant</dt><dd>${formaterFcfa(r.cout_carburant)}</dd>
         <dt>Coût carburant × 4 (facturé)</dt><dd>${formaterFcfa(r.cout_carburant_x4)}</dd>
@@ -691,8 +755,8 @@
         <dt>TTC aller-retour</dt><dd>${formaterFcfa(r.ttc_aller_retour)}</dd>
         <dt>TTC après remise</dt><dd>${formaterFcfa(r.ttc_apres_remise)}</dd>
         <div class="highlight highlight-total highlight-total-round">
-          <span>TTC aller-retour</span>
-          <span>${formaterFcfa(r.ttc_aller_retour)}</span>
+          <span>Montant HT aller-retour</span>
+          <span>${formaterFcfa(r.ht_aller_retour)}</span>
         </div>
         <div class="highlight highlight-total highlight-total-oneway">
           <span>TTC aller simple</span>
@@ -707,6 +771,16 @@
         58 places × 2 (VIP, sans TVA) : ${formaterFcfa(r.prix_par_place_vip_58)}
       </p>
     `;
+
+    conteneur.querySelectorAll(".devis-tab").forEach((tab) => {
+      tab.addEventListener("click", async () => {
+        const version = versions.find((item) => item.key === tab.dataset.version);
+        if (!version) return;
+        state.devisSelection = version.key;
+        state.distanceKm = version.distance_km;
+        await calculerDevis();
+      });
+    });
   }
 
   // ------------------------------------------------------- base de trajets
