@@ -235,7 +235,11 @@ def generer_proforma_pdf(
         ],
     ]
 
-    tableau_principal = Table(tableau_data, colWidths=[0.7*cm, 6*cm, 1.5*cm, 2.5*cm, 2.5*cm])
+    tableau_principal = Table(
+        tableau_data,
+        colWidths=[0.8 * cm, 8.4 * cm, 1.6 * cm, 2.5 * cm, 2.7 * cm],
+        repeatRows=1,
+    )
     tableau_principal.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), DARK),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -249,6 +253,7 @@ def generer_proforma_pdf(
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("WORDWRAP", (1, 1), (1, 1), "CJK"),
     ]))
     elements.append(tableau_principal)
     elements.append(Spacer(1, 12))
@@ -256,21 +261,22 @@ def generer_proforma_pdf(
     # Résumé : Total, TVA, Total à payer
     montant_total = resultat.ht_aller_retour
     resume_data = [
-        ["", "Total", f"{montant_total:,.0f}"],
-        ["", "TVA", ""],
-        ["", "Total à payer", f"{montant_total:,.0f}"],
+        ["Total", f"{montant_total:,.0f}"],
+        ["TVA", ""],
+        ["Total à payer", f"{montant_total:,.0f}"],
     ]
-    resume_table = Table(resume_data, colWidths=[6*cm, 2.5*cm, 2.5*cm])
+    resume_table = Table(resume_data, colWidths=[5.6 * cm, 5.1 * cm], hAlign="RIGHT")
     resume_table.setStyle(TableStyle([
-        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-        ("FONTNAME", (1, 0), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (1, 0), (-1, -1), 10),
-        ("GRID", (1, 0), (-1, -1), 0.5, LINE),
-        ("BACKGROUND", (1, 2), (-1, 2), colors.HexColor("#F0F0F0")),
-        ("LEFTPADDING", (1, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (1, 0), (-1, -1), 6),
-        ("TOPPADDING", (1, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (1, 0), (-1, -1), 5),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("GRID", (0, 0), (-1, -1), 0.5, LINE),
+        ("BACKGROUND", (0, 2), (1, 2), colors.HexColor("#F0F0F0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     elements.append(resume_table)
     elements.append(Spacer(1, 14))
