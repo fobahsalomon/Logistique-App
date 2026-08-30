@@ -6,7 +6,7 @@ from typing import Any
 
 from core.pricing import DevisInput, DevisResult
 
-CAPACITES_CAR = (63, 58, 51, 49)
+CAPACITES_CAR = (73, 63, 58, 51, 49)
 
 
 class DevisValidationError(ValueError):

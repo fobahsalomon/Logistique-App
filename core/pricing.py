@@ -57,7 +57,7 @@ def calculer_devis(entree: DevisInput) -> DevisResult:
     ttc_aller_simple = ttc_apres_remise / 2
 
     prix_par_place = {
-        n: prix_vente_aller / n for n in (63, 51, 49) if n
+        n: prix_vente_aller / n for n in (73, 63, 51, 49) if n
     }
     # Toujours inclure le nombre de places demandé par l'utilisateur
     if entree.nb_places:

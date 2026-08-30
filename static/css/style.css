@@ -188,6 +188,29 @@ input:focus { border-color: var(--yellow); }
   justify-content: space-between;
 }
 
+.devis-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.devis-tab {
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.devis-tab.active {
+  background: rgba(242, 183, 5, 0.12);
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
 .table-places {
   width: 100%;
   border-collapse: collapse;

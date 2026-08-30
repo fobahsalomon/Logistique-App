@@ -182,7 +182,7 @@ def test_devis_cas_reference(client):
 
 
 def test_devis_capacites_supportees(client):
-    for capacite in (63, 58, 51, 49):
+    for capacite in (73, 63, 58, 51, 49):
         rep = client.post("/api/devis", json={"distance_km": 100, "nb_places": capacite})
         assert rep.status_code == 200
         data = rep.get_json()

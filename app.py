@@ -33,6 +33,7 @@ from core.db import (
 )
 from core.devis_pdf import generer_pdf_devis
 from core.devis_service import DevisValidationError, devis_input_from_payload, serialiser_devis
+from core.proforma_pdf import generer_proforma_pdf
 from core.pricing import calculer_devis, frais_mission_defaut
 from core.routing import RoutingError, _geocoder_nominatim, _geocoder_nominatim_multi, calculer_itineraire, get_client, resoudre_itineraire
 from data.seed_trajets import seed as seed_trajets
@@ -381,17 +382,18 @@ def api_devis_pdf():
         return erreur
 
     resultat = calculer_devis(entree)
-    pdf = generer_pdf_devis(
+    pdf = generer_proforma_pdf(
         entree,
         resultat,
         origine=payload.get("origine"),
         destination=payload.get("destination"),
+        client_nom=payload.get("client_nom", "Client"),
     )
     return send_file(
         BytesIO(pdf),
         mimetype="application/pdf",
         as_attachment=True,
-        download_name="devis-ca-trans.pdf",
+        download_name="proforma-ca-trans.pdf",
     )
 
 
