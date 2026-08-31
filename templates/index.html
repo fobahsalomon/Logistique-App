@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CA TRANS — Fiche de calcul convoi</title>
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='catrans-logo.png') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='catrans-logo.png') }}">
+  <link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='catrans-logo.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='catrans-logo.png') }}">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -76,6 +80,19 @@
 
       <div id="bandeau-ajout-lieu" class="bandeau-ajout" hidden>
         Cliquez sur la carte à l'endroit du nouveau lieu
+      </div>
+
+      <div class="comparison-panel">
+        <div class="comparison-header">
+          <h2>Comparaison de devis</h2>
+          <button id="btn-proforma-principal" class="btn btn-primary btn-sm">Télécharger / Imprimer la Proforma</button>
+        </div>
+        <div class="field comparison-search">
+          <label for="recherche-standard">Trajet standard de référence</label>
+          <input id="recherche-standard" type="text" placeholder="Ex : ABIDJAN → SAN PEDRO, YAMOUSSOUKRO..." autocomplete="off">
+        </div>
+        <div id="comparaison-standard-list" class="standard-list"></div>
+        <div id="comparaison-devis" class="comparison-grid"></div>
       </div>
 
       <div id="statut" class="statut" hidden></div>
@@ -210,6 +227,39 @@
       <a href="https://fobahsalomon.github.io/portfolio" target="_blank" rel="noopener noreferrer">Portfolio</a>
     </nav>
   </footer>
+
+  <dialog id="modal-proforma" class="modal modal-proforma">
+    <h3>Informations de la proforma</h3>
+    <form id="form-proforma" method="dialog">
+      <div class="field">
+        <label for="proforma-client">Client / Raison sociale</label>
+        <input id="proforma-client" name="client_nom" type="text" required>
+      </div>
+      <div class="field">
+        <label for="proforma-responsable">Responsable de la flotte</label>
+        <input id="proforma-responsable" name="responsable_flotte" type="text" required>
+      </div>
+      <div class="row row-2">
+        <div class="field">
+          <label for="proforma-date-debut">Date de début</label>
+          <input id="proforma-date-debut" name="date_debut" type="date" required>
+        </div>
+        <div class="field">
+          <label for="proforma-date-fin">Date de fin</label>
+          <input id="proforma-date-fin" name="date_fin" type="date" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="proforma-numero">N° Proforma</label>
+        <input id="proforma-numero" name="num_proforma" type="text" readonly>
+      </div>
+      <div id="proforma-summary" class="proforma-summary"></div>
+      <div class="modal-actions">
+        <button id="btn-generer-proforma" type="submit" class="btn btn-primary">Générer la Proforma</button>
+        <button id="btn-annuler-proforma" type="button" class="btn">Annuler</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="modal-edition" class="modal">
     <h3>Modifier le trajet</h3>

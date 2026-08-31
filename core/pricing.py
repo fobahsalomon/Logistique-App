@@ -20,6 +20,8 @@ class DevisInput:
     peage: float = 0
     marge_pct: float = 10
     remise_montant: float = 0
+    route_type: str = "reel"
+    base_prix_place: float = 0.0
 
 
 @dataclass
@@ -43,11 +45,18 @@ class DevisResult:
 def calculer_devis(entree: DevisInput) -> DevisResult:
     """Calcule le devis complet à partir des paramètres du voyage."""
 
-    consommation_totale = (entree.distance_km * entree.conso_100km) / 100
-    cout_carburant = consommation_totale * entree.prix_litre
-    cout_carburant_x4 = cout_carburant * 4  # règle Excel d'origine, ne pas "corriger"
-    total_autres_frais = entree.frais_chauffeur + entree.peage + entree.frais_convoyeur
-    cout_revient_total = cout_carburant_x4 + total_autres_frais
+    if entree.route_type == "standard" and entree.base_prix_place > 0:
+        cout_base = entree.base_prix_place * entree.nb_places
+        total_autres_frais = entree.frais_chauffeur + entree.peage + entree.frais_convoyeur
+        cout_revient_total = cout_base + total_autres_frais
+    else:
+        consommation_totale = (entree.distance_km * entree.conso_100km) / 100
+        cout_carburant = consommation_totale * entree.prix_litre
+        cout_carburant_x4 = cout_carburant * 4  # règle Excel d'origine, ne pas "corriger"
+        total_autres_frais = entree.frais_chauffeur + entree.peage + entree.frais_convoyeur
+        cout_revient_total = cout_carburant_x4 + total_autres_frais
+        consommation_totale = consommation_totale
+
     marge = cout_revient_total * (entree.marge_pct / 100)
     prix_vente_aller = cout_revient_total + marge
     ht_aller_retour = prix_vente_aller * 2
@@ -64,6 +73,11 @@ def calculer_devis(entree: DevisInput) -> DevisResult:
         prix_par_place[entree.nb_places] = prix_vente_aller / entree.nb_places
 
     prix_par_place_vip_58 = (prix_vente_aller / 58) * 2
+
+    if entree.route_type == "standard" and entree.base_prix_place > 0:
+        consommation_totale = 0.0
+        cout_carburant = 0.0
+        cout_carburant_x4 = 0.0
 
     return DevisResult(
         consommation_totale=consommation_totale,

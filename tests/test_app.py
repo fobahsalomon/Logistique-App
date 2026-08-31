@@ -141,6 +141,18 @@ def test_liste_trajets(client):
     assert len(trajets) == 70
 
 
+def test_supprimer_trajet_reellement(client):
+    trajets_avant = client.get("/api/trajets").get_json()
+    trajet = trajets_avant[0]
+
+    rep = client.delete(f"/api/trajet/{trajet['id']}")
+    assert rep.status_code == 200
+    assert rep.get_json() == {"ok": True}
+
+    trajets_apres = client.get("/api/trajets").get_json()
+    assert all(itineraire["id"] != trajet["id"] for itineraire in trajets_apres)
+
+
 def test_resoudre_trajet_connu(client):
     rep = client.post("/api/resoudre", json={"origine": "SP", "destination": "Abidjan"})
     assert rep.status_code == 200
@@ -159,6 +171,19 @@ def test_resoudre_trajet_inconnu(client):
 def test_resoudre_champs_manquants(client):
     rep = client.post("/api/resoudre", json={"origine": "", "destination": ""})
     assert rep.status_code == 400
+
+
+def test_api_itineraire_accepte_lng_au_lieu_de_lon(client):
+    rep = client.post(
+        "/api/itineraire",
+        json={
+            "origine": {"lat": 5.33, "lng": -4.02},
+            "destination": {"lat": 5.35, "lng": -3.98},
+        },
+    )
+    assert rep.status_code == 200
+    data = rep.get_json()
+    assert data["statut"] == "erreur" or "distance_km" in data
 
 
 def test_frais_mission(client):

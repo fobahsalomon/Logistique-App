@@ -45,6 +45,14 @@ def devis_input_from_payload(payload: dict[str, Any]) -> DevisInput:
         capacites = ", ".join(str(capacite) for capacite in CAPACITES_CAR)
         raise DevisValidationError(f"Le nombre de places doit être l'une des valeurs suivantes : {capacites}.")
 
+    route_type = str(payload.get("route_type", "reel") or "reel").strip().lower()
+    if route_type not in {"reel", "standard"}:
+        route_type = "reel"
+
+    base_prix_place = 0.0
+    if route_type == "standard":
+        base_prix_place = _nombre(payload, "base_prix_place", payload.get("prix_place", 0))
+
     return DevisInput(
         distance_km=distance_km,
         nb_places=nb_places,
@@ -55,6 +63,8 @@ def devis_input_from_payload(payload: dict[str, Any]) -> DevisInput:
         peage=_nombre(payload, "peage", 0),
         marge_pct=_nombre(payload, "marge_pct", 10),
         remise_montant=_nombre(payload, "remise_montant", 0),
+        route_type=route_type,
+        base_prix_place=base_prix_place,
     )
 
 

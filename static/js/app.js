@@ -18,6 +18,10 @@
     destinationTexte: "",
     statut: null,
     modeAjoutLieu: false,
+    standardRoute: null,
+    devisSelection: null,
+    devisResults: {},
+    versions: [],
   };
 
   // ---------------------------------------------------------------- carte
@@ -25,7 +29,7 @@
     maxBounds: CI_BOUNDS,
     maxBoundsViscosity: 1.0,
     minZoom: 6,
-    maxZoom: 21, // overzoom au-delà de la résolution native des tuiles (usage perso, non commercial)
+    maxZoom: 19,
   }).setView(CI_CENTER, 7);
 
   // Fond CartoDB Voyager — plus lisible (noms de rues, détails visuels)
@@ -35,8 +39,8 @@
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
       subdomains: "abcd",
-      maxZoom: 21,
-      maxNativeZoom: 20,
+      maxZoom: 19,
+      maxNativeZoom: 19,
     }
   ).addTo(carte);
 
@@ -45,7 +49,7 @@
     "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 21,
+      maxZoom: 19,
       maxNativeZoom: 19,
     }
   );
@@ -55,7 +59,7 @@
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {
       attribution: "Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics",
-      maxZoom: 21,
+      maxZoom: 19,
       maxNativeZoom: 19,
     }
   );
@@ -559,8 +563,13 @@
   }
 
   function getDevisPayload() {
-    return {
-      distance_km: state.distanceKm,
+    const trajetStandard = state.standardRoute || trouverTrajetStandard();
+    const selectedDistanceKm = state.devisSelection === "standard"
+      ? Number((trajetStandard && trajetStandard.distance_km) || state.distanceKm || 0)
+      : Number(state.distanceKm || 0);
+
+    const payload = {
+      distance_km: selectedDistanceKm,
       nb_places: parseInt(document.getElementById("nb-places").value, 10) || 63,
       conso_100km: parseFloat(document.getElementById("conso-100km").value) || 0,
       prix_litre: parseFloat(document.getElementById("prix-litre").value) || 0,
@@ -571,7 +580,14 @@
       remise_montant: parseFloat(document.getElementById("remise-montant").value) || 0,
       origine: state.origineTexte || null,
       destination: state.destinationTexte || null,
+      route_type: state.devisSelection === "standard" ? "standard" : "reel",
     };
+
+    if (state.devisSelection === "standard") {
+      payload.base_prix_place = parseMontantStandard(trajetStandard && trajetStandard.montant_aller);
+    }
+
+    return payload;
   }
 
   const champsDevis = [
@@ -584,11 +600,76 @@
   document.getElementById("nb-places").addEventListener("change", () => devisPerime());
 
   document.getElementById("btn-calculer-devis").addEventListener("click", calculerDevis);
+  document.getElementById("btn-proforma-principal").addEventListener("click", ouvrirModalProforma);
+  document.getElementById("recherche-standard").addEventListener("input", renderStandardRouteSuggestions);
 
-  document.getElementById("btn-telecharger-pdf").addEventListener("click", async () => {
+  function numeroProformaAuto() {
+    const now = new Date();
+    const seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+    return Math.max(1, Number(String(seed).slice(-6)) + Math.floor(Math.random() * 9000 + 1000));
+  }
+
+  function ouvrirModalProforma() {
     if (!state.distanceKm) return;
-    const btn = document.getElementById("btn-telecharger-pdf");
-    const labelOriginal = btn.textContent;
+    const modal = document.getElementById("modal-proforma");
+    const numero = document.getElementById("proforma-numero");
+    const client = document.getElementById("proforma-client");
+    const responsable = document.getElementById("proforma-responsable");
+    const debut = document.getElementById("proforma-date-debut");
+    const fin = document.getElementById("proforma-date-fin");
+    const summary = document.getElementById("proforma-summary");
+
+    const version = state.versions.find((v) => v.key === state.devisSelection) || state.versions[0];
+    const result = state.devisResults[state.devisSelection] || state.devisResults.reel || state.devisResults[version?.key] || null;
+
+    numero.value = `CAT-PRO-${numeroProformaAuto()}`;
+    if (!client.value) client.value = "";
+    if (!responsable.value) responsable.value = "GNAYE SARAH";
+    if (!debut.value) {
+      const today = new Date();
+      debut.value = today.toISOString().split("T")[0];
+    }
+    if (!fin.value) {
+      const plus3 = new Date();
+      plus3.setDate(plus3.getDate() + 3);
+      fin.value = plus3.toISOString().split("T")[0];
+    }
+
+    if (result && version) {
+      summary.innerHTML = `
+        <h4>Devis sélectionné</h4>
+        <div class="proforma-balance">
+          <div class="proforma-row"><span>${version.label}</span><strong>${version.meta || "Itinéraire actuel"}</strong></div>
+          <div class="proforma-row"><span>Montant HT</span><strong>${formaterFcfa(result.ht_aller_retour)}</strong></div>
+          <div class="proforma-row"><span>TVA</span><strong>${formaterFcfa(result.tva)}</strong></div>
+          <div class="proforma-row"><span>Montant TTC</span><strong>${formaterFcfa(result.ttc_aller_retour)}</strong></div>
+        </div>
+      `;
+    } else {
+      summary.innerHTML = '<p class="muted">Aucun devis actif à résumer.</p>';
+    }
+
+    modal.showModal();
+  }
+
+  document.getElementById("btn-telecharger-pdf").addEventListener("click", ouvrirModalProforma);
+  document.getElementById("btn-annuler-proforma").addEventListener("click", () => {
+    document.getElementById("modal-proforma").close();
+  });
+
+  document.getElementById("form-proforma").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const modal = document.getElementById("modal-proforma");
+    const data = new FormData(event.target);
+    const payload = { ...getDevisPayload(), ...Object.fromEntries(data.entries()) };
+
+    if (!payload.client_nom || !payload.responsable_flotte || !payload.date_debut || !payload.date_fin) {
+      alert("Veuillez renseigner le client, le responsable, et les dates de location.");
+      return;
+    }
+
+    const btn = document.getElementById("btn-generer-proforma");
+    const original = btn.textContent;
     btn.textContent = "Génération...";
     btn.disabled = true;
 
@@ -596,7 +677,7 @@
       const resp = await fetch("/api/devis/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(getDevisPayload()),
+        body: JSON.stringify(payload),
       });
 
       if (!resp.ok) {
@@ -604,7 +685,7 @@
         try {
           const err = await resp.json();
           if (err.erreur) errMsg = err.erreur;
-        } catch(e) {}
+        } catch (e) {}
         alert(errMsg);
         return;
       }
@@ -614,15 +695,16 @@
       const a = document.createElement("a");
       a.style.display = "none";
       a.href = url;
-      a.download = "devis-ca-trans.pdf";
+      a.download = "proforma-ca-trans.pdf";
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
+      modal.close();
     } catch (err) {
       alert("Erreur de connexion.");
     } finally {
-      btn.textContent = labelOriginal;
+      btn.textContent = original;
       btn.disabled = false;
     }
   });
@@ -642,6 +724,20 @@
     })} F CFA`;
   }
 
+  function parseMontantStandard(valeur) {
+    if (valeur === null || valeur === undefined || valeur === "") return 0;
+    if (typeof valeur === "number") return Number.isFinite(valeur) ? valeur : 0;
+
+    const texte = String(valeur)
+      .replace(/\s+/g, "")
+      .replace(/[^0-9,.-]/g, "")
+      .replace(/,/g, ".");
+
+    if (!texte || texte === "-" || texte === ".") return 0;
+    const nombre = Number.parseFloat(texte);
+    return Number.isFinite(nombre) ? nombre : 0;
+  }
+
   function normaliserTexte(texte) {
     return (texte || "")
       .normalize("NFD")
@@ -653,6 +749,10 @@
   }
 
   function trouverTrajetStandard() {
+    if (state.standardRoute && Array.isArray(trajetsCache) && trajetsCache.some((t) => t.id === state.standardRoute.id)) {
+      return state.standardRoute;
+    }
+
     const texteOrigine = normaliserTexte(state.origineTexte || "");
     const texteDestination = normaliserTexte(state.destinationTexte || "");
     if (!texteOrigine || !texteDestination || !Array.isArray(trajetsCache) || trajetsCache.length === 0) {
@@ -679,25 +779,72 @@
     return candidats[0] || null;
   }
 
-  async function calculerDevis() {
-    const conteneur = document.getElementById("fiche-devis");
-    if (!state.distanceKm) {
-      conteneur.innerHTML = '<p class="muted">Résolvez d\'abord un itinéraire pour obtenir la distance.</p>';
+  function renderStandardRouteSuggestions() {
+    const input = document.getElementById("recherche-standard");
+    const liste = document.getElementById("comparaison-standard-list");
+    const query = (input?.value || "").trim();
+
+    if (!liste || !Array.isArray(trajetsCache)) {
       return;
     }
 
+    const suggestions = !query
+      ? trajetsCache.slice(0, 6)
+      : trajetsCache.filter((t) => {
+          const haystack = `${t.origine} ${t.destination}`.toLowerCase();
+          return haystack.includes(query.toLowerCase());
+        }).slice(0, 6);
+
+    if (!suggestions.length) {
+      liste.innerHTML = '<div class="muted">Aucun trajet standard correspondant.</div>';
+      return;
+    }
+
+    liste.innerHTML = suggestions.map((t) => `
+      <button type="button" class="standard-item" data-id="${t.id}">
+        ${t.origine} → ${t.destination} · ${t.distance_km} km
+      </button>
+    `).join("");
+
+    liste.querySelectorAll(".standard-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const trajet = trajetsCache.find((t) => t.id === Number(item.dataset.id));
+        if (!trajet) return;
+        state.standardRoute = trajet;
+        const inputStandard = document.getElementById("recherche-standard");
+        if (inputStandard) inputStandard.value = `${trajet.origine} → ${trajet.destination}`;
+        calculerDevis();
+      });
+    });
+  }
+
+  async function calculerDevis() {
+    const conteneur = document.getElementById("fiche-devis");
+    const comparaison = document.getElementById("comparaison-devis");
+    if (!state.distanceKm) {
+      conteneur.innerHTML = '<p class="muted">Résolvez d\'abord un itinéraire pour obtenir la distance.</p>';
+      if (comparaison) comparaison.innerHTML = "";
+      return;
+    }
+
+    const realDistanceKm = Number(state.distanceKm || 0);
     const versions = [{
       key: "reel",
       label: "Itinéraire réel",
-      distance_km: Number(state.distanceKm),
+      distance_km: realDistanceKm,
+      route_type: "reel",
     }];
+    state.versions = versions;
 
-    const trajetStandard = trouverTrajetStandard();
-    if (trajetStandard && Number(trajetStandard.distance_km) && Math.abs(Number(trajetStandard.distance_km) - Number(state.distanceKm)) > 1) {
+    const trajetStandard = state.standardRoute || trouverTrajetStandard();
+    if (trajetStandard && Number(trajetStandard.distance_km) && Math.abs(Number(trajetStandard.distance_km) - realDistanceKm) > 1) {
       versions.push({
         key: "standard",
-        label: `Trajet standard (${trajetStandard.origine} → ${trajetStandard.destination})`,
+        label: "Trajet standard",
         distance_km: Number(trajetStandard.distance_km),
+        meta: `${trajetStandard.origine} → ${trajetStandard.destination}`,
+        route_type: "standard",
+        base_prix_place: parseMontantStandard(trajetStandard.montant_aller),
       });
     }
 
@@ -706,78 +853,155 @@
     }
     const versionActive = versions.find((v) => v.key === state.devisSelection) || versions[0];
 
-    const corps = {
-      distance_km:     versionActive.distance_km,
-      nb_places:       parseInt(document.getElementById("nb-places").value, 10) || 63,
-      conso_100km:     parseFloat(document.getElementById("conso-100km").value) || 0,
-      prix_litre:      parseFloat(document.getElementById("prix-litre").value) || 0,
-      frais_chauffeur: parseFloat(document.getElementById("frais-chauffeur").value) || 0,
-      frais_convoyeur: parseFloat(document.getElementById("frais-convoyeur").value) || 0,
-      peage:           parseFloat(document.getElementById("peage").value) || 0,
-      marge_pct:       parseFloat(document.getElementById("marge-pct").value) || 0,
-      remise_montant:  parseFloat(document.getElementById("remise-montant").value) || 0,
+    const buildCorps = (version) => {
+      const payload = {
+        distance_km: Number(version.distance_km || realDistanceKm || 0),
+        nb_places: parseInt(document.getElementById("nb-places").value, 10) || 63,
+        conso_100km: parseFloat(document.getElementById("conso-100km").value) || 0,
+        prix_litre: parseFloat(document.getElementById("prix-litre").value) || 0,
+        frais_chauffeur: parseFloat(document.getElementById("frais-chauffeur").value) || 0,
+        frais_convoyeur: parseFloat(document.getElementById("frais-convoyeur").value) || 0,
+        peage: parseFloat(document.getElementById("peage").value) || 0,
+        marge_pct: parseFloat(document.getElementById("marge-pct").value) || 0,
+        remise_montant: parseFloat(document.getElementById("remise-montant").value) || 0,
+        route_type: version.route_type || "reel",
+      };
+
+      if (version.route_type === "standard") {
+        payload.base_prix_place = Number(version.base_prix_place || parseMontantStandard((trajetStandard && trajetStandard.montant_aller) || 0));
+      }
+
+      return payload;
     };
 
-    const r = await appelApi("/api/devis", corps);
+    const r = await appelApi("/api/devis", buildCorps(versionActive));
     if (r.erreur) {
       conteneur.innerHTML = `<p class="statut erreur">${r.erreur}</p>`;
+      if (comparaison) comparaison.innerHTML = "";
       document.getElementById("etat-devis").hidden = true;
       document.getElementById("btn-telecharger-pdf").disabled = true;
       return;
     }
 
+    const resultatsParVersion = { [versionActive.key]: r };
+    state.devisResults = { [versionActive.key]: r };
+    if (versions.length > 1) {
+      const autreVersion = versions.find((v) => v.key !== versionActive.key);
+      if (autreVersion) {
+        const autreResult = await appelApi("/api/devis", buildCorps(autreVersion));
+        resultatsParVersion[autreVersion.key] = autreResult;
+        state.devisResults[autreVersion.key] = autreResult;
+      }
+    }
+
     document.getElementById("etat-devis").hidden = true;
     document.getElementById("btn-telecharger-pdf").disabled = false;
 
-    const lignesPlaces = r.prix_par_place
+    const lines = r.prix_par_place
       .map((p) => `<tr><td>${p.places} places</td><td>${formaterFcfa(p.prix)}</td></tr>`)
       .join("");
 
     const tabsHtml = versions.length > 1
       ? `<div class="devis-tabs">${versions.map((v) => `
-          <button type="button" class="devis-tab ${v.key === versionActive.key ? "active" : ""}" data-version="${v.key}">${v.label}</button>
+          <button type="button" class="devis-tab ${v.key === versionActive.key ? "active" : ""}" data-version="${v.key}">${v.label}${v.meta ? ` · ${v.meta}` : ""}</button>
         `).join("")}</div>`
+      : "";
+
+    const comparisonHtml = versions.length > 1
+      ? `<div class="comparison-grid">${versions.map((v) => {
+          const res = resultatsParVersion[v.key] || r;
+          const isActive = v.key === versionActive.key;
+          return `
+            <article class="comparison-card ${isActive ? "selected" : ""}" data-version="${v.key}">
+              <div class="comparison-card__top">
+                <span class="comparison-badge">${isActive ? "Devis sélectionné" : "Option"}</span>
+                <span class="comparison-distance">${v.distance_km.toFixed(1)} km</span>
+              </div>
+              <h3>${v.label}${v.meta ? ` · ${v.meta}` : ""}</h3>
+              <div class="comparison-kpis">
+                <div class="kpi-mini">
+                  <span>HT Aller simple</span>
+                  <strong>${formaterFcfa(res.prix_vente_aller)}</strong>
+                </div>
+                <div class="kpi-mini">
+                  <span>HT Aller-retour</span>
+                  <strong>${formaterFcfa(res.ht_aller_retour)}</strong>
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm compare-select" data-version="${v.key}">${isActive ? "Devis sélectionné" : "Choisir ce devis"}</button>
+            </article>
+          `;
+        }).join("")}</div>`
       : "";
 
     conteneur.innerHTML = `
       ${tabsHtml}
+      <div class="fiche-kpis">
+        <div class="fiche-kpi"><span>HT Aller simple</span><strong>${formaterFcfa(r.prix_vente_aller)}</strong></div>
+        <div class="fiche-kpi"><span>HT Aller-retour</span><strong>${formaterFcfa(r.ht_aller_retour)}</strong></div>
+      </div>
+      <div class="devis-summary">
+        <details open>
+          <summary>Détail synthétique</summary>
+          <div class="detail-list">
+            <dl>
+              <dt>Distance sélectionnée</dt><dd>${versionActive.distance_km.toFixed(1)} km</dd>
+              <dt>Consommation totale</dt><dd>${r.consommation_totale.toFixed(2)} L</dd>
+              <dt>Coût carburant</dt><dd>${formaterFcfa(r.cout_carburant)}</dd>
+              <dt>Coût carburant × 4</dt><dd>${formaterFcfa(r.cout_carburant_x4)}</dd>
+              <dt>Total autres frais</dt><dd>${formaterFcfa(r.total_autres_frais)}</dd>
+              <dt>Coût de revient total</dt><dd>${formaterFcfa(r.cout_revient_total)}</dd>
+              <dt>Marge</dt><dd>${formaterFcfa(r.marge)}</dd>
+              <dt>TVA (18 %)</dt><dd>${formaterFcfa(r.tva)}</dd>
+              <dt>TTC aller-retour</dt><dd>${formaterFcfa(r.ttc_aller_retour)}</dd>
+              <dt>TTC après remise</dt><dd>${formaterFcfa(r.ttc_apres_remise)}</dd>
+            </dl>
+          </div>
+        </details>
+      </div>
       <dl>
-        <dt>Distance sélectionnée</dt><dd>${versionActive.distance_km.toFixed(1)} km</dd>
-        <dt>Consommation totale</dt><dd>${r.consommation_totale.toFixed(2)} L</dd>
-        <dt>Coût carburant</dt><dd>${formaterFcfa(r.cout_carburant)}</dd>
-        <dt>Coût carburant × 4 (facturé)</dt><dd>${formaterFcfa(r.cout_carburant_x4)}</dd>
-        <dt>Total autres frais</dt><dd>${formaterFcfa(r.total_autres_frais)}</dd>
-        <dt>Coût de revient total</dt><dd>${formaterFcfa(r.cout_revient_total)}</dd>
-        <dt>Marge</dt><dd>${formaterFcfa(r.marge)}</dd>
-        <dt>Prix de vente aller simple</dt><dd>${formaterFcfa(r.prix_vente_aller)}</dd>
-        <dt>Montant HT aller-retour</dt><dd>${formaterFcfa(r.ht_aller_retour)}</dd>
-        <dt>TVA (18 %)</dt><dd>${formaterFcfa(r.tva)}</dd>
-        <dt>TTC aller-retour</dt><dd>${formaterFcfa(r.ttc_aller_retour)}</dd>
-        <dt>TTC après remise</dt><dd>${formaterFcfa(r.ttc_apres_remise)}</dd>
-        <div class="highlight highlight-total highlight-total-round">
+        <div class="highlight highlight-total">
           <span>Montant HT aller-retour</span>
           <span>${formaterFcfa(r.ht_aller_retour)}</span>
-        </div>
-        <div class="highlight highlight-total highlight-total-oneway">
-          <span>TTC aller simple</span>
-          <span>${formaterFcfa(r.ttc_aller_simple)}</span>
         </div>
       </dl>
       <table class="table-places">
         <thead><tr><th>Places</th><th>Prix / place (aller simple, sans TVA)</th></tr></thead>
-        <tbody>${lignesPlaces}</tbody>
+        <tbody>${lines}</tbody>
       </table>
       <p class="muted" style="margin-top:10px;">
         58 places × 2 (VIP, sans TVA) : ${formaterFcfa(r.prix_par_place_vip_58)}
       </p>
     `;
 
+    if (comparaison) {
+      comparaison.innerHTML = comparisonHtml;
+      const setVersionSelection = async (versionKey) => {
+        const version = versions.find((item) => item.key === versionKey);
+        if (!version) return;
+        state.devisSelection = version.key;
+        await calculerDevis();
+      };
+
+      comparaison.querySelectorAll(".comparison-card").forEach((card) => {
+        card.addEventListener("click", async (event) => {
+          if (event.target.closest(".compare-select")) return;
+          await setVersionSelection(card.dataset.version);
+        });
+      });
+      comparaison.querySelectorAll(".compare-select").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+          event.stopPropagation();
+          await setVersionSelection(button.dataset.version);
+        });
+      });
+    }
+
     conteneur.querySelectorAll(".devis-tab").forEach((tab) => {
       tab.addEventListener("click", async () => {
         const version = versions.find((item) => item.key === tab.dataset.version);
         if (!version) return;
         state.devisSelection = version.key;
-        state.distanceKm = version.distance_km;
         await calculerDevis();
       });
     });
@@ -836,6 +1060,7 @@
   async function chargerTrajets() {
     trajetsCache = await appelApi("/api/trajets");
     afficherTableTrajets(trajetsCache);
+    renderStandardRouteSuggestions();
   }
 
   function afficherTableTrajets(trajets) {

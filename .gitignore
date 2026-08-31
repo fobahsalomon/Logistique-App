@@ -1,9 +1,50 @@
+# Python / Flask
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .pytest_cache/
 .mypy_cache/
-.env
-data/CI/
-*.osm.pbf
+.pyre/
+.ruff_cache/
 .venv/
 venv/
+ENV/
+env/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary and generated files
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+coverage.xml
+htmlcov/
+site/
+build/
+dist/
+node_modules/
+
+# Deployment / runtime artifacts
+*.pid
+*.sqlite3
+*.db-journal
+
+# Local project artifacts
+/.cache/
+/.pytest_cache/
+
+# Keep project data that is part of the app when intentionally tracked
+# (do not ignore the shipped database or core app files unless explicitly required)

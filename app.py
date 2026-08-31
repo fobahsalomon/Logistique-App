@@ -283,6 +283,32 @@ def api_resoudre():
     })
 
 
+def _point_to_tuple(point):
+    """Normalise les coordonnées des points reçus par l'UI ou l'API.
+
+    L'application peut recevoir `lon`/`lat` ou `lng`/`lat`, selon le client.
+    """
+    if not isinstance(point, dict):
+        return None
+
+    lat = point.get("lat")
+    lon = point.get("lon")
+    if lon is None:
+        lon = point.get("lng")
+    if lon is None:
+        lon = point.get("longitude")
+    if lat is None:
+        lat = point.get("latitude")
+
+    if lat is None or lon is None:
+        return None
+
+    try:
+        return (float(lon), float(lat))
+    except (TypeError, ValueError):
+        return None
+
+
 @app.post("/api/itineraire")
 def api_itineraire():
     """Calcule l'itinéraire OSRM entre deux points placés manuellement sur la carte."""
@@ -292,11 +318,14 @@ def api_itineraire():
     if not origine or not destination:
         return jsonify({"statut": "erreur", "message": "Deux points sont requis."}), 400
 
+    origine_coord = _point_to_tuple(origine)
+    destination_coord = _point_to_tuple(destination)
+    if origine_coord is None or destination_coord is None:
+        return jsonify({"statut": "erreur", "message": "Coordonnées invalides pour l'origine ou la destination."}), 400
+
     try:
         client = get_client()
-        itineraire = calculer_itineraire(
-            client, (origine["lon"], origine["lat"]), (destination["lon"], destination["lat"])
-        )
+        itineraire = calculer_itineraire(client, origine_coord, destination_coord)
     except RoutingError as exc:
         return jsonify({"statut": "erreur", "message": str(exc)}), 200
 
@@ -387,7 +416,11 @@ def api_devis_pdf():
         resultat,
         origine=payload.get("origine"),
         destination=payload.get("destination"),
+        num_proforma=payload.get("num_proforma"),
         client_nom=payload.get("client_nom", "Client"),
+        responsable_flotte=payload.get("responsable_flotte", "GNAYE SARAH"),
+        date_debut=payload.get("date_debut"),
+        date_fin=payload.get("date_fin"),
     )
     return send_file(
         BytesIO(pdf),
