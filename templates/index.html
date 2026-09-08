@@ -18,6 +18,9 @@
     <div class="subtitle">Fiche de calcul convoi</div>
     <div class="compte">
       <span class="compte-nom">{{ current_user.username }}</span>
+      {% if current_user.is_admin %}
+        <a href="{{ url_for('page_proformas_en_attente') }}" class="lien-secondaire">Administration</a>
+      {% endif %}
       <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
     </div>
   </header>
@@ -249,13 +252,11 @@
           <input id="proforma-date-fin" name="date_fin" type="date" required>
         </div>
       </div>
-      <div class="field">
-        <label for="proforma-numero">N° Proforma</label>
-        <input id="proforma-numero" name="num_proforma" type="text" readonly>
-      </div>
+      <p class="muted">Ce devis n'aura de numéro de proforma officiel qu'après validation par un administrateur.</p>
       <div id="proforma-summary" class="proforma-summary"></div>
       <div class="modal-actions">
-        <button id="btn-generer-proforma" type="submit" class="btn btn-primary">Générer la Proforma</button>
+        <button id="btn-generer-proforma" type="submit" class="btn">Télécharger l'aperçu</button>
+        <button id="btn-soumettre-proforma" type="button" class="btn btn-primary">Soumettre pour validation</button>
         <button id="btn-annuler-proforma" type="button" class="btn">Annuler</button>
       </div>
     </form>

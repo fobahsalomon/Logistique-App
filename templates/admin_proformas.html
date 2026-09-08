@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Validation des proformas — CA TRANS</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">CA TRANS<span>.</span></div>
+    <div class="subtitle">Administration</div>
+    <div class="compte">
+      <span class="compte-nom">{{ current_user.username }}</span>
+      <a href="{{ url_for('index') }}" class="lien-secondaire">Application</a>
+      <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
+    </div>
+  </header>
+
+  <nav class="panel-full admin-nav">
+    <a href="{{ url_for('page_proformas_en_attente') }}" class="btn btn-mode-active">Validation</a>
+    <a href="{{ url_for('page_proformas_historique') }}" class="btn">Historique</a>
+    <a href="{{ url_for('page_utilisateurs') }}" class="btn">Utilisateurs</a>
+    <a href="{{ url_for('page_audit') }}" class="btn">Audit</a>
+  </nav>
+
+  <main class="panel-full">
+    <section class="panel">
+      <h2>Proformas en attente de validation</h2>
+      {% if not proformas %}
+        <p class="muted">Aucune proforma en attente.</p>
+      {% else %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Soumis le</th>
+                <th>Agent</th>
+                <th>Client</th>
+                <th>Trajet</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in proformas %}
+                <tr id="proforma-{{ p['id'] }}">
+                  <td>{{ p['emis_le'] }}</td>
+                  <td>{{ p['agent_username'] }}</td>
+                  <td>{{ p['client_nom'] or '—' }}</td>
+                  <td>{{ p['origine'] or '?' }} → {{ p['destination'] or '?' }}</td>
+                  <td>
+                    <button class="btn btn-primary" onclick="validerProforma({{ p['id'] }})">Valider</button>
+                    <button class="btn btn-danger" onclick="rejeterProforma({{ p['id'] }})">Rejeter</button>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+
+  <script>
+    async function validerProforma(id) {
+      if (!confirm("Valider cette proforma et lui attribuer un numéro officiel ?")) return;
+      const resp = await fetch(`/admin/proformas/${id}/valider`, { method: "POST" });
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.erreur || "Erreur."); return; }
+      alert(`Proforma validée : ${data.numero_proforma}`);
+      document.getElementById(`proforma-${id}`).remove();
+    }
+
+    async function rejeterProforma(id) {
+      const motif = prompt("Motif du rejet (optionnel) :") || "";
+      const resp = await fetch(`/admin/proformas/${id}/rejeter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motif }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.erreur || "Erreur."); return; }
+      document.getElementById(`proforma-${id}`).remove();
+    }
+  </script>
+</body>
+</html>

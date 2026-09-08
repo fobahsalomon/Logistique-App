@@ -4,8 +4,12 @@ Calcul d'itinéraire via OSRM + Nominatim (sans clé API).
 Moteur de devis reproduisant exactement les formules Excel d'origine.
 """
 
+import dataclasses
+import json
 import os
 import secrets as secrets_module
+from datetime import datetime
+from functools import wraps
 from io import BytesIO
 
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
@@ -20,15 +24,25 @@ from flask_login import (
 
 from core.db import (
     definir_mot_de_passe,
+    definir_role,
+    enregistrer_audit,
     init_db,
     inserer_lieu,
     inserer_trajet,
+    lister_audit_logs,
+    lister_proformas_en_attente,
+    lister_proformas_historique,
+    lister_utilisateurs,
     list_trajets,
     mettre_a_jour_trajet,
+    creer_proforma,
+    obtenir_proforma_par_id,
     obtenir_utilisateur_par_id,
     rechercher_lieux,
     rechercher_trajet,
+    rejeter_proforma,
     supprimer_trajet,
+    valider_proforma,
     verifier_mot_de_passe,
 )
 from core.devis_pdf import generer_pdf_devis
@@ -59,19 +73,29 @@ app.secret_key = _secret_key
 
 def _bootstrap_comptes_env() -> None:
     """Synchronise les comptes définis dans AUTH_USERS (format
-    "user:pass,user2:pass2") à chaque démarrage : AUTH_USERS fait foi, donc
-    un mot de passe changé dans la variable d'environnement est repris ici
-    plutôt que de rester figé sur la première valeur créée. Ne stocke jamais
-    les mots de passe en clair — seul le hash est écrit en base."""
+    "user:pass,user2:pass2" ou "user:pass:role,...") à chaque démarrage :
+    AUTH_USERS fait foi pour le mot de passe, donc un mot de passe changé
+    dans la variable d'environnement est repris ici plutôt que de rester
+    figé sur la première valeur créée. Ne stocke jamais les mots de passe
+    en clair — seul le hash est écrit en base.
+
+    Le rôle n'est appliqué QUE s'il est explicitement présent dans la
+    variable d'environnement (3e segment) — sinon le rôle existant en base
+    n'est jamais touché, pour ne pas rétrograder silencieusement un admin
+    promu depuis le panneau d'administration à chaque redémarrage."""
     brut = os.environ.get("AUTH_USERS", "")
     for paire in brut.split(","):
         paire = paire.strip()
         if not paire or ":" not in paire:
             continue
-        username, _, password = paire.partition(":")
-        username, password = username.strip(), password.strip()
+        segments = paire.split(":")
+        username = segments[0].strip()
+        password = segments[1].strip() if len(segments) > 1 else ""
+        role = segments[2].strip().upper() if len(segments) > 2 else None
         if username and password:
             definir_mot_de_passe(username, password)
+            if role in ("AGENT", "ADMIN"):
+                definir_role(username, role)
 
 
 with app.app_context():
@@ -84,6 +108,11 @@ class Utilisateur(UserMixin):
     def __init__(self, row):
         self.id = row["id"]
         self.username = row["username"]
+        self.role = row["role"]
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "ADMIN"
 
 
 login_manager = LoginManager(app)
@@ -107,6 +136,30 @@ def exiger_connexion():
     return login_manager.unauthorized()
 
 
+def role_requis_api(*roles):
+    """Restreint une route JSON aux utilisateurs ayant l'un des rôles donnés."""
+    def decorateur(vue):
+        @wraps(vue)
+        def enveloppe(*args, **kwargs):
+            if current_user.role not in roles:
+                return jsonify({"erreur": "Accès réservé aux administrateurs."}), 403
+            return vue(*args, **kwargs)
+        return enveloppe
+    return decorateur
+
+
+def role_requis_page(*roles):
+    """Restreint une route HTML aux utilisateurs ayant l'un des rôles donnés."""
+    def decorateur(vue):
+        @wraps(vue)
+        def enveloppe(*args, **kwargs):
+            if current_user.role not in roles:
+                return render_template("erreur_403.html"), 403
+            return vue(*args, **kwargs)
+        return enveloppe
+    return decorateur
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -121,6 +174,7 @@ def login():
     if row is None:
         return render_template("login.html", erreur="Identifiant ou mot de passe incorrect."), 401
     login_user(Utilisateur(row))
+    enregistrer_audit(row["id"], "LOGIN", None, request.remote_addr)
     return redirect(request.args.get("next") or url_for("index"))
 
 
@@ -406,6 +460,10 @@ def api_devis():
 
 @app.post("/api/devis/pdf")
 def api_devis_pdf():
+    """Génère un aperçu PDF non officiel — jamais de numéro de proforma ici,
+    quel que soit le contenu du payload (voir /api/proformas pour soumettre
+    un devis à validation, et /admin/proformas/<id>/pdf pour le document
+    officiel numéroté une fois validé par un administrateur)."""
     payload, entree, erreur = _devis_depuis_requete()
     if erreur:
         return erreur
@@ -416,7 +474,6 @@ def api_devis_pdf():
         resultat,
         origine=payload.get("origine"),
         destination=payload.get("destination"),
-        num_proforma=payload.get("num_proforma"),
         client_nom=payload.get("client_nom", "Client"),
         responsable_flotte=payload.get("responsable_flotte", "GNAYE SARAH"),
         date_debut=payload.get("date_debut"),
@@ -426,8 +483,153 @@ def api_devis_pdf():
         BytesIO(pdf),
         mimetype="application/pdf",
         as_attachment=True,
-        download_name="proforma-ca-trans.pdf",
+        download_name="apercu-devis-ca-trans.pdf",
     )
+
+
+@app.post("/api/proformas")
+def api_creer_proforma():
+    """Soumet un devis pour validation admin — reste sans numéro officiel
+    tant qu'un administrateur ne l'a pas validé."""
+    payload, entree, erreur = _devis_depuis_requete()
+    if erreur:
+        return erreur
+
+    resultat = calculer_devis(entree)
+    emis_le = datetime.now().isoformat(timespec="seconds")
+    proforma_id = creer_proforma(
+        agent_id=current_user.id,
+        devis_input_json=json.dumps(dataclasses.asdict(entree)),
+        devis_result_json=json.dumps(dataclasses.asdict(resultat)),
+        emis_le=emis_le,
+        origine=payload.get("origine"),
+        destination=payload.get("destination"),
+        client_nom=payload.get("client_nom"),
+        responsable_flotte=payload.get("responsable_flotte"),
+        date_debut=payload.get("date_debut"),
+        date_fin=payload.get("date_fin"),
+    )
+    enregistrer_audit(current_user.id, "DEVIS_SOUMIS", f"proforma #{proforma_id}", request.remote_addr)
+    return jsonify({"id": proforma_id, "statut": "EN_ATTENTE_VALIDATION"}), 201
+
+
+@app.post("/admin/proformas/<int:proforma_id>/valider")
+@role_requis_api("ADMIN")
+def api_valider_proforma(proforma_id: int):
+    numero = valider_proforma(proforma_id, current_user.id)
+    if numero is None:
+        return jsonify({"erreur": "Cette proforma a déjà été traitée."}), 409
+    enregistrer_audit(current_user.id, "PROFORMA_VALIDEE", numero, request.remote_addr)
+    return jsonify({"numero_proforma": numero, "statut": "VALIDE"})
+
+
+@app.post("/admin/proformas/<int:proforma_id>/rejeter")
+@role_requis_api("ADMIN")
+def api_rejeter_proforma(proforma_id: int):
+    payload = request.get_json(force=True, silent=True) or {}
+    motif = (payload.get("motif") or "").strip() or None
+    ok = rejeter_proforma(proforma_id, current_user.id, motif)
+    if not ok:
+        return jsonify({"erreur": "Cette proforma a déjà été traitée."}), 409
+    enregistrer_audit(current_user.id, "PROFORMA_REJETEE", motif, request.remote_addr)
+    return jsonify({"statut": "REJETE"})
+
+
+@app.get("/admin/proformas")
+@role_requis_page("ADMIN")
+def page_proformas_en_attente():
+    return render_template("admin_proformas.html", proformas=lister_proformas_en_attente())
+
+
+@app.get("/admin/proformas/historique")
+@role_requis_page("ADMIN")
+def page_proformas_historique():
+    filtres = {
+        "numero": request.args.get("numero") or None,
+        "date_debut": request.args.get("date_debut") or None,
+        "date_fin": request.args.get("date_fin") or None,
+        "agent_username": request.args.get("agent") or None,
+        "client_nom": request.args.get("client") or None,
+        "trajet": request.args.get("trajet") or None,
+    }
+    return render_template(
+        "admin_historique.html",
+        proformas=lister_proformas_historique(**filtres),
+        filtres=request.args,
+    )
+
+
+@app.get("/admin/proformas/<int:proforma_id>/pdf")
+@role_requis_page("ADMIN")
+def page_proforma_pdf(proforma_id: int):
+    from core.pricing import DevisInput, DevisResult
+
+    row = obtenir_proforma_par_id(proforma_id)
+    if row is None or row["statut"] != "VALIDE":
+        return render_template("erreur_403.html"), 404
+
+    entree = DevisInput(**json.loads(row["devis_input_json"]))
+    resultat = DevisResult(**json.loads(row["devis_result_json"]))
+    pdf = generer_proforma_pdf(
+        entree,
+        resultat,
+        origine=row["origine"],
+        destination=row["destination"],
+        numero_proforma=row["numero_proforma"],
+        client_nom=row["client_nom"] or "Client",
+        responsable_flotte=row["responsable_flotte"] or "GNAYE SARAH",
+        date_debut=row["date_debut"],
+        date_fin=row["date_fin"],
+        emis_le=datetime.fromisoformat(row["emis_le"]),
+    )
+    return send_file(
+        BytesIO(pdf),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"proforma-{row['numero_proforma']}.pdf",
+    )
+
+
+@app.get("/admin/utilisateurs")
+@role_requis_page("ADMIN")
+def page_utilisateurs():
+    return render_template("admin_utilisateurs.html", utilisateurs=lister_utilisateurs())
+
+
+@app.post("/admin/utilisateurs/<int:user_id>/reinitialiser-mot-de-passe")
+@role_requis_api("ADMIN")
+def api_reinitialiser_mot_de_passe(user_id: int):
+    payload = request.get_json(force=True, silent=True) or {}
+    nouveau_mdp = (payload.get("password") or "").strip()
+    if not nouveau_mdp:
+        return jsonify({"erreur": "Nouveau mot de passe requis."}), 400
+    row = obtenir_utilisateur_par_id(user_id)
+    if row is None:
+        return jsonify({"erreur": "Utilisateur introuvable."}), 404
+    definir_mot_de_passe(row["username"], nouveau_mdp)
+    enregistrer_audit(current_user.id, "MOT_DE_PASSE_REINITIALISE", row["username"], request.remote_addr)
+    return jsonify({"ok": True})
+
+
+@app.post("/admin/utilisateurs/<int:user_id>/role")
+@role_requis_api("ADMIN")
+def api_changer_role(user_id: int):
+    payload = request.get_json(force=True, silent=True) or {}
+    role = (payload.get("role") or "").strip().upper()
+    if role not in ("AGENT", "ADMIN"):
+        return jsonify({"erreur": "Rôle invalide."}), 400
+    row = obtenir_utilisateur_par_id(user_id)
+    if row is None:
+        return jsonify({"erreur": "Utilisateur introuvable."}), 404
+    definir_role(row["username"], role)
+    enregistrer_audit(current_user.id, "ROLE_MODIFIE", f"{row['username']} -> {role}", request.remote_addr)
+    return jsonify({"ok": True})
+
+
+@app.get("/admin/audit")
+@role_requis_page("ADMIN")
+def page_audit():
+    return render_template("admin_audit.html", logs=lister_audit_logs())
 
 
 if __name__ == "__main__":

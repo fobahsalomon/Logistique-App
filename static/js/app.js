@@ -603,16 +603,9 @@
   document.getElementById("btn-proforma-principal").addEventListener("click", ouvrirModalProforma);
   document.getElementById("recherche-standard").addEventListener("input", renderStandardRouteSuggestions);
 
-  function numeroProformaAuto() {
-    const now = new Date();
-    const seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
-    return Math.max(1, Number(String(seed).slice(-6)) + Math.floor(Math.random() * 9000 + 1000));
-  }
-
   function ouvrirModalProforma() {
     if (!state.distanceKm) return;
     const modal = document.getElementById("modal-proforma");
-    const numero = document.getElementById("proforma-numero");
     const client = document.getElementById("proforma-client");
     const responsable = document.getElementById("proforma-responsable");
     const debut = document.getElementById("proforma-date-debut");
@@ -622,7 +615,6 @@
     const version = state.versions.find((v) => v.key === state.devisSelection) || state.versions[0];
     const result = state.devisResults[state.devisSelection] || state.devisResults.reel || state.devisResults[version?.key] || null;
 
-    numero.value = `CAT-PRO-${numeroProformaAuto()}`;
     if (!client.value) client.value = "";
     if (!responsable.value) responsable.value = "GNAYE SARAH";
     if (!debut.value) {
@@ -695,12 +687,48 @@
       const a = document.createElement("a");
       a.style.display = "none";
       a.href = url;
-      a.download = "proforma-ca-trans.pdf";
+      a.download = "apercu-devis-ca-trans.pdf";
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
       modal.close();
+    } catch (err) {
+      alert("Erreur de connexion.");
+    } finally {
+      btn.textContent = original;
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("btn-soumettre-proforma").addEventListener("click", async () => {
+    const form = document.getElementById("form-proforma");
+    const data = new FormData(form);
+    const payload = { ...getDevisPayload(), ...Object.fromEntries(data.entries()) };
+
+    if (!payload.client_nom || !payload.responsable_flotte || !payload.date_debut || !payload.date_fin) {
+      alert("Veuillez renseigner le client, le responsable, et les dates de location.");
+      return;
+    }
+
+    const btn = document.getElementById("btn-soumettre-proforma");
+    const original = btn.textContent;
+    btn.textContent = "Envoi...";
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch("/api/proformas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        alert(`Erreur : ${err.erreur || "Erreur inconnue"}`);
+        return;
+      }
+      alert("Devis soumis pour validation. Un administrateur devra le valider avant l'émission d'un numéro de proforma officiel.");
+      document.getElementById("modal-proforma").close();
     } catch (err) {
       alert("Erreur de connexion.");
     } finally {

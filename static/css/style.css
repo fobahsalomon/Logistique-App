@@ -566,6 +566,13 @@ dialog.modal h3 { margin: 0 0 20px; font-size: 16px; font-weight: 600; }
 .autocomplete-liste li:last-child { border-bottom: none; }
 .autocomplete-liste li:hover { background: var(--panel-alt); color: var(--yellow); }
 
+/* --------------------------------------------------------------- admin */
+.admin-nav {
+  display: flex;
+  gap: 10px;
+  margin: 20px auto 0;
+}
+
 /* -------------------------------------------------------- carte secondaire */
 .details-carte { margin: 8px 0 12px; }
 .details-carte summary { margin-bottom: 8px; }

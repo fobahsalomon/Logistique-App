@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Historique des proformas — CA TRANS</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">CA TRANS<span>.</span></div>
+    <div class="subtitle">Administration</div>
+    <div class="compte">
+      <span class="compte-nom">{{ current_user.username }}</span>
+      <a href="{{ url_for('index') }}" class="lien-secondaire">Application</a>
+      <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
+    </div>
+  </header>
+
+  <nav class="panel-full admin-nav">
+    <a href="{{ url_for('page_proformas_en_attente') }}" class="btn">Validation</a>
+    <a href="{{ url_for('page_proformas_historique') }}" class="btn btn-mode-active">Historique</a>
+    <a href="{{ url_for('page_utilisateurs') }}" class="btn">Utilisateurs</a>
+    <a href="{{ url_for('page_audit') }}" class="btn">Audit</a>
+  </nav>
+
+  <main class="panel-full">
+    <section class="panel">
+      <h2>Historique des proformas validées</h2>
+      <form method="get" class="row row-2">
+        <div class="field">
+          <label for="f-numero">N° Proforma</label>
+          <input id="f-numero" name="numero" value="{{ filtres.get('numero', '') }}">
+        </div>
+        <div class="field">
+          <label for="f-client">Client</label>
+          <input id="f-client" name="client" value="{{ filtres.get('client', '') }}">
+        </div>
+        <div class="field">
+          <label for="f-agent">Agent</label>
+          <input id="f-agent" name="agent" value="{{ filtres.get('agent', '') }}">
+        </div>
+        <div class="field">
+          <label for="f-trajet">Trajet (origine ou destination)</label>
+          <input id="f-trajet" name="trajet" value="{{ filtres.get('trajet', '') }}">
+        </div>
+        <div class="field">
+          <label for="f-debut">Validée à partir du</label>
+          <input id="f-debut" type="date" name="date_debut" value="{{ filtres.get('date_debut', '') }}">
+        </div>
+        <div class="field">
+          <label for="f-fin">Validée jusqu'au</label>
+          <input id="f-fin" type="date" name="date_fin" value="{{ filtres.get('date_fin', '') }}">
+        </div>
+        <div class="field">
+          <button type="submit" class="btn btn-primary">Filtrer</button>
+        </div>
+      </form>
+
+      {% if not proformas %}
+        <p class="muted">Aucune proforma validée pour ces filtres.</p>
+      {% else %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>N° Proforma</th>
+                <th>Validée le</th>
+                <th>Agent</th>
+                <th>Client</th>
+                <th>Trajet</th>
+                <th>PDF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in proformas %}
+                <tr>
+                  <td>{{ p['numero_proforma'] }}</td>
+                  <td>{{ p['valide_le'] }}</td>
+                  <td>{{ p['agent_username'] }}</td>
+                  <td>{{ p['client_nom'] or '—' }}</td>
+                  <td>{{ p['origine'] or '?' }} → {{ p['destination'] or '?' }}</td>
+                  <td><a class="btn btn-sm" href="{{ url_for('page_proforma_pdf', proforma_id=p['id']) }}">Télécharger</a></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

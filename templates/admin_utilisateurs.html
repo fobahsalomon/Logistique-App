@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Utilisateurs — CA TRANS</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">CA TRANS<span>.</span></div>
+    <div class="subtitle">Administration</div>
+    <div class="compte">
+      <span class="compte-nom">{{ current_user.username }}</span>
+      <a href="{{ url_for('index') }}" class="lien-secondaire">Application</a>
+      <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
+    </div>
+  </header>
+
+  <nav class="panel-full admin-nav">
+    <a href="{{ url_for('page_proformas_en_attente') }}" class="btn">Validation</a>
+    <a href="{{ url_for('page_proformas_historique') }}" class="btn">Historique</a>
+    <a href="{{ url_for('page_utilisateurs') }}" class="btn btn-mode-active">Utilisateurs</a>
+    <a href="{{ url_for('page_audit') }}" class="btn">Audit</a>
+  </nav>
+
+  <main class="panel-full">
+    <section class="panel">
+      <h2>Utilisateurs</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom d'utilisateur</th>
+              <th>Rôle</th>
+              <th>Créé le</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in utilisateurs %}
+              <tr id="user-{{ u['id'] }}">
+                <td>{{ u['username'] }}</td>
+                <td>
+                  <select onchange="changerRole({{ u['id'] }}, this.value)">
+                    <option value="AGENT" {% if u['role'] == 'AGENT' %}selected{% endif %}>AGENT</option>
+                    <option value="ADMIN" {% if u['role'] == 'ADMIN' %}selected{% endif %}>ADMIN</option>
+                  </select>
+                </td>
+                <td>{{ u['created_at'] }}</td>
+                <td><button class="btn btn-sm" onclick="reinitialiserMotDePasse({{ u['id'] }}, '{{ u['username'] }}')">Réinitialiser le mot de passe</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function changerRole(id, role) {
+      const resp = await fetch(`/admin/utilisateurs/${id}/role`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) alert(data.erreur || "Erreur.");
+    }
+
+    async function reinitialiserMotDePasse(id, username) {
+      const password = prompt(`Nouveau mot de passe pour ${username} :`);
+      if (!password) return;
+      const resp = await fetch(`/admin/utilisateurs/${id}/reinitialiser-mot-de-passe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.erreur || "Erreur."); return; }
+      alert("Mot de passe réinitialisé.");
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accès refusé — CA TRANS</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <div class="brand">CA TRANS<span>.</span></div>
+      <div class="subtitle">Accès refusé</div>
+      <p class="statut erreur">Cette page est réservée aux administrateurs.</p>
+      <a href="{{ url_for('index') }}" class="btn btn-primary login-submit">Retour à l'application</a>
+    </div>
+  </div>
+</body>
+</html>
