@@ -1,3 +1,4 @@
+import re
 import sys
 from pathlib import Path
 
@@ -41,6 +42,37 @@ def client_anonyme(tmp_path, monkeypatch):
     app_module.app.config.update(TESTING=True)
     with app_module.app.test_client() as c:
         yield c
+
+
+@pytest.fixture()
+def client_admin(tmp_path, monkeypatch):
+    """Client de test connecté avec le rôle ADMIN."""
+    db_path = tmp_path / "test.db"
+    monkeypatch.setattr("core.db.DB_PATH", db_path)
+    monkeypatch.setattr("core.routing.resoudre_itineraire", _routing_indisponible)
+    monkeypatch.setattr("core.routing.calculer_itineraire", _routing_indisponible)
+    app_module.app.secret_key = "cle-de-test"
+    app_module.init_db()
+    app_module.seed_trajets()
+    app_module.definir_mot_de_passe("adminuser", "adminpass")
+    app_module.definir_role("adminuser", "ADMIN")
+    app_module.app.config.update(TESTING=True)
+    with app_module.app.test_client() as c:
+        c.post("/login", data={"username": "adminuser", "password": "adminpass"})
+        yield c
+
+
+def _payload_devis():
+    return {
+        "distance_km": 250,
+        "nb_places": 63,
+        "origine": "Abidjan",
+        "destination": "San Pedro",
+        "client_nom": "ACME",
+        "responsable_flotte": "GNAYE SARAH",
+        "date_debut": "2026-09-10",
+        "date_fin": "2026-09-12",
+    }
 
 
 def test_page_sans_connexion_redirige_vers_login(client_anonyme):
@@ -336,3 +368,195 @@ def test_adresses_aucun_resultat(client):
     rep = client.get("/api/adresses?q=zzzzzz-inconnu-xxxx")
     assert rep.status_code == 200
     assert rep.get_json() == []
+
+
+# --------------------------------------------------------------- RBAC / rôles
+
+def test_agent_ne_peut_pas_acceder_a_la_queue_de_validation(client):
+    rep = client.get("/admin/proformas")
+    assert rep.status_code == 403
+
+
+def test_agent_ne_peut_pas_valider_une_proforma(client):
+    rep = client.post("/api/proformas", json=_payload_devis())
+    proforma_id = rep.get_json()["id"]
+
+    rep = client.post(f"/admin/proformas/{proforma_id}/valider")
+    assert rep.status_code == 403
+
+    row = app_module.obtenir_proforma_par_id(proforma_id)
+    assert row["statut"] == "EN_ATTENTE_VALIDATION"
+
+
+def test_anonyme_redirige_pour_routes_admin(client_anonyme):
+    for route in ("/admin/proformas", "/admin/proformas/historique", "/admin/utilisateurs", "/admin/audit"):
+        rep = client_anonyme.get(route, follow_redirects=False)
+        assert rep.status_code == 302
+        assert "/login" in rep.headers["Location"]
+
+
+# --------------------------------------------------------- workflow proformas
+
+def test_soumission_proforma_sans_numero(client):
+    rep = client.post("/api/proformas", json=_payload_devis())
+    assert rep.status_code == 201
+    data = rep.get_json()
+    assert data["statut"] == "EN_ATTENTE_VALIDATION"
+
+    row = app_module.obtenir_proforma_par_id(data["id"])
+    assert row["numero_proforma"] is None
+
+
+def test_apercu_pdf_ne_contient_jamais_de_numero_officiel(client):
+    payload = dict(_payload_devis())
+    payload["num_proforma"] = "CAT-PRO-999999"  # tentative de forcer un numéro côté client
+    rep = client.post("/api/devis/pdf", json=payload)
+    assert rep.status_code == 200
+    assert rep.mimetype == "application/pdf"
+    assert b"999999" not in rep.data
+
+
+def test_admin_peut_valider_une_proforma(client_admin):
+    rep = client_admin.post("/api/proformas", json=_payload_devis())
+    proforma_id = rep.get_json()["id"]
+
+    rep = client_admin.post(f"/admin/proformas/{proforma_id}/valider")
+    assert rep.status_code == 200
+    numero = rep.get_json()["numero_proforma"]
+    assert re.fullmatch(r"PRO-\d{6}-\d{3}", numero)
+
+    row = app_module.obtenir_proforma_par_id(proforma_id)
+    assert row["statut"] == "VALIDE"
+    assert row["numero_proforma"] == numero
+
+
+def test_proforma_deja_validee_ne_peut_pas_etre_revalidee(client_admin):
+    rep = client_admin.post("/api/proformas", json=_payload_devis())
+    proforma_id = rep.get_json()["id"]
+
+    rep = client_admin.post(f"/admin/proformas/{proforma_id}/valider")
+    assert rep.status_code == 200
+
+    rep = client_admin.post(f"/admin/proformas/{proforma_id}/valider")
+    assert rep.status_code == 409
+
+
+def test_numerotation_sequence_le_meme_jour(client_admin):
+    id1 = client_admin.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+    id2 = client_admin.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+
+    numero1 = client_admin.post(f"/admin/proformas/{id1}/valider").get_json()["numero_proforma"]
+    numero2 = client_admin.post(f"/admin/proformas/{id2}/valider").get_json()["numero_proforma"]
+
+    jour1, seq1 = numero1.rsplit("-", 1)
+    jour2, seq2 = numero2.rsplit("-", 1)
+    assert jour1 == jour2
+    assert int(seq2) == int(seq1) + 1
+
+
+def test_numerotation_se_reinitialise_par_jour():
+    """Teste directement core.db pour ne pas dépendre de la date système."""
+    import tempfile
+    from pathlib import Path as _Path
+
+    import core.db as db
+
+    with tempfile.TemporaryDirectory() as tmp:
+        original_path = db.DB_PATH
+        db.DB_PATH = _Path(tmp) / "test_numerotation.db"
+        try:
+            db.init_db()
+            agent_id = db.creer_utilisateur("agent-jour", "x")
+            admin_id = db.creer_utilisateur("admin-jour", "x", role="ADMIN")
+
+            id_a = db.creer_proforma(agent_id, "{}", "{}", "2026-09-08T10:00:00")
+            id_b = db.creer_proforma(agent_id, "{}", "{}", "2026-09-09T10:00:00")
+
+            numero_a = db.valider_proforma(id_a, admin_id, jour="080926")
+            numero_b = db.valider_proforma(id_b, admin_id, jour="090926")
+
+            assert numero_a == "PRO-080926-001"
+            assert numero_b == "PRO-090926-001"
+        finally:
+            db.DB_PATH = original_path
+
+
+def test_rejet_proforma(client_admin):
+    proforma_id = client_admin.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+
+    rep = client_admin.post(f"/admin/proformas/{proforma_id}/rejeter", json={"motif": "Client injoignable"})
+    assert rep.status_code == 200
+
+    row = app_module.obtenir_proforma_par_id(proforma_id)
+    assert row["statut"] == "REJETE"
+    assert row["motif_rejet"] == "Client injoignable"
+
+
+def test_telechargement_pdf_proforma_validee(client_admin):
+    proforma_id = client_admin.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+    numero = client_admin.post(f"/admin/proformas/{proforma_id}/valider").get_json()["numero_proforma"]
+
+    rep = client_admin.get(f"/admin/proformas/{proforma_id}/pdf")
+    assert rep.status_code == 200
+    assert rep.mimetype == "application/pdf"
+    assert numero in rep.headers["Content-Disposition"]
+
+
+# ------------------------------------------------------------------- audit
+
+def test_login_cree_une_entree_audit(client):
+    logs = app_module.lister_audit_logs(action="LOGIN")
+    assert any(log["username"] == "testuser" for log in logs)
+
+
+def test_validation_proforma_cree_une_entree_audit(client_admin):
+    proforma_id = client_admin.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+    numero = client_admin.post(f"/admin/proformas/{proforma_id}/valider").get_json()["numero_proforma"]
+
+    logs = app_module.lister_audit_logs(action="PROFORMA_VALIDEE")
+    assert any(log["details"] == numero for log in logs)
+
+
+def test_reinitialisation_mot_de_passe_cree_une_entree_audit(client_admin):
+    import core.db as db
+
+    autre_id = db.creer_utilisateur("collegue-test", "ancien-mdp")
+
+    rep = client_admin.post(
+        f"/admin/utilisateurs/{autre_id}/reinitialiser-mot-de-passe",
+        json={"password": "nouveau-mdp-1234"},
+    )
+    assert rep.status_code == 200
+
+    logs = app_module.lister_audit_logs(action="MOT_DE_PASSE_REINITIALISE")
+    assert any(log["details"] == "collegue-test" for log in logs)
+
+
+# --------------------------------------------------------------- migration
+
+def test_ajout_colonne_role_sur_db_existante(tmp_path):
+    """Simule une DB de prod créée avant l'ajout de la colonne role."""
+    import sqlite3
+
+    db_path = tmp_path / "ancienne.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """CREATE TABLE utilisateurs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )"""
+    )
+    conn.execute("INSERT INTO utilisateurs (username, password_hash) VALUES ('ancien', 'hash')")
+    conn.commit()
+
+    import core.db as db
+    db.init_db(conn)
+
+    colonnes = {row[1] for row in conn.execute("PRAGMA table_info(utilisateurs)").fetchall()}
+    assert "role" in colonnes
+
+    role = conn.execute("SELECT role FROM utilisateurs WHERE username = 'ancien'").fetchone()[0]
+    assert role == "AGENT"
+    conn.close()
