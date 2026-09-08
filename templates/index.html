@@ -176,6 +176,34 @@
       <div id="fiche-devis">
         <p class="muted">Résolvez d'abord un itinéraire pour obtenir la distance.</p>
       </div>
+
+      <div id="section-comparatif" hidden>
+        <h2>Comparaison de prix</h2>
+        <div class="comparatif-actions">
+          <p class="muted">Choisissez le montant à imprimer :</p>
+          <div class="row row-2">
+            <button id="btn-imprimer-calcule" class="btn btn-primary">Imprimer le devis calculé</button>
+            <button id="btn-imprimer-stocke" class="btn" disabled>Imprimer le montant stocké</button>
+          </div>
+          <button id="btn-imprimer-les-deux" class="btn" disabled>Imprimer les deux côte à côte</button>
+        </div>
+        <div class="comparatif-labels">
+          <p class="muted">
+            <span id="label-montant-stocke" class="montant-stocke"></span>
+            <span id="label-trajet-info"></span>
+          </p>
+        </div>
+        <div class="comparatif-ligne">
+          <div class="comparatif-carte">
+            <div class="comparatif-titre">Devis calculé</div>
+            <div id="comparatif-calcule" class="comparatif-valeur"></div>
+          </div>
+          <div class="comparatif-carte">
+            <div class="comparatif-titre">Montant stocké</div>
+            <div id="comparatif-stocke" class="comparatif-valeur"></div>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 

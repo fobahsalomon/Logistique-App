@@ -505,6 +505,22 @@
     state.statut     = reponse.statut;
     afficherStatut(reponse.statut, reponse.message);
 
+    // Afficher/masquer la section comparative si on a un trajet_id
+    const sectionComparatif = document.getElementById("section-comparatif");
+    if (reponse.trajet_id) {
+      sectionComparatif.hidden = false;
+      document.getElementById("btn-telecharger-pdf").disabled = false;
+      // Afficher le devis calculé par défaut
+      mettreAJourComparatif(reponse);
+      // Marquer le bouton "calculé" comme actif
+      document.getElementById("btn-imprimer-calcule").classList.add("actif");
+      document.getElementById("btn-imprimer-stocke").classList.remove("actif");
+      document.getElementById("btn-imprimer-les-deux").disabled = false;
+    } else {
+      sectionComparatif.hidden = true;
+      document.getElementById("btn-telecharger-pdf").disabled = true;
+    }
+
     if (reponse.origine_point) {
       const o = reponse.origine_point;
       state.originePoint = { lat: o.lat, lon: o.lon };
@@ -627,6 +643,157 @@
     }
   });
 
+  // Boutons d'impression comparative
+  document.getElementById("btn-imprimer-calcule").addEventListener("click", async () => {
+    if (!state.distanceKm) return;
+    const btn = document.getElementById("btn-imprimer-calcule");
+    const labelOriginal = btn.textContent;
+    btn.textContent = "Génération...";
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch("/api/devis/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(getDevisPayload()),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert(`Erreur : ${err.erreur || "Erreur inconnue"}`);
+        return;
+      }
+
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+      a.download = "devis-ca-trans-calcule.pdf";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      alert("Erreur de connexion.");
+    } finally {
+      btn.textContent = labelOriginal;
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("btn-imprimer-stocke").addEventListener("click", async () => {
+    if (!state.distanceKm || !state.montantStocke) return;
+    const btn = document.getElementById("btn-imprimer-stocke");
+    const labelOriginal = btn.textContent;
+    btn.textContent = "Génération...";
+    btn.disabled = true;
+
+    try {
+      const payload = getDevisPayload();
+      payload.montant_aller = state.montantStocke;
+
+      const resp = await fetch("/api/devis/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert(`Erreur : ${err.erreur || "Erreur inconnue"}`);
+        return;
+      }
+
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+      a.download = "devis-ca-trans-stocke.pdf";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      alert("Erreur de connexion.");
+    } finally {
+      btn.textContent = labelOriginal;
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("btn-imprimer-les-deux").addEventListener("click", async () => {
+    if (!state.distanceKm || !state.montantStocke) return;
+    const btn = document.getElementById("btn-imprimer-les-deux");
+    const labelOriginal = btn.textContent;
+    btn.textContent = "Génération...";
+    btn.disabled = true;
+
+    try {
+      // Générer les deux PDFs
+      const payloadCalcule = getDevisPayload();
+      payloadCalcule._mode = "calcule";
+
+      const payloadStocke = getDevisPayload();
+      payloadStocke.montant_aller = state.montantStocke;
+      payloadStocke._mode = "stocke";
+
+      // Générer le premier PDF
+      const respCalcule = await fetch("/api/devis/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payloadCalcule),
+      });
+
+      if (!respCalcule.ok) {
+        const err = await respCalcule.json();
+        alert(`Erreur : ${err.erreur || "Erreur inconnue"}`);
+        return;
+      }
+
+      const blobCalcule = await respCalcule.blob();
+      const urlCalcule = window.URL.createObjectURL(blobCalcule);
+      const aCalcule = document.createElement("a");
+      aCalcule.style.display = "none";
+      aCalcule.href = urlCalcule;
+      aCalcule.download = "devis-ca-trans-calcule.pdf";
+      document.body.appendChild(aCalcule);
+      aCalcule.click();
+      window.URL.revokeObjectURL(urlCalcule);
+      aCalcule.remove();
+
+      // Générer le second PDF
+      const respStocke = await fetch("/api/devis/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payloadStocke),
+      });
+
+      if (!respStocke.ok) {
+        const err = await respStocke.json();
+        alert(`Erreur : ${err.erreur || "Erreur inconnue"}`);
+        return;
+      }
+
+      const blobStocke = await respStocke.blob();
+      const urlStocke = window.URL.createObjectURL(blobStocke);
+      const aStocke = document.createElement("a");
+      aStocke.style.display = "none";
+      aStocke.href = urlStocke;
+      aStocke.download = "devis-ca-trans-stocke.pdf";
+      document.body.appendChild(aStocke);
+      aStocke.click();
+      window.URL.revokeObjectURL(urlStocke);
+      aStocke.remove();
+    } catch (err) {
+      alert("Erreur de connexion.");
+    } finally {
+      btn.textContent = labelOriginal;
+      btn.disabled = false;
+    }
+  });
+
   document.getElementById("nb-jours").addEventListener("change", async (e) => {
     const jours = parseInt(e.target.value, 10) || 1;
     const reponse = await appelApi(`/api/frais-mission?jours=${jours}`);
@@ -640,6 +807,55 @@
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })} F CFA`;
+  }
+
+  // Mettre à jour l'affichage comparatif
+  async function mettreAJourComparatif(reponse) {
+    const montantStocke = reponse.montant_aller;
+    const distanceKm = reponse.distance_km;
+
+    // Appeler l'API pour obtenir le devis calculé
+    const devisPayload = getDevisPayload();
+    let resultat = null;
+    try {
+      const resp = await fetch("/api/devis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...devisPayload, distance_km: distanceKm }),
+      });
+      if (resp.ok) {
+        resultat = await resp.json();
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // Afficher le devis calculé
+    if (resultat) {
+      const coutRevient = resultat.cout_revient_total;
+      const prixVenteAller = resultat.prix_vente_aller;
+      document.getElementById("comparatif-calcule").textContent =
+        `TTC aller-retour: ${formaterFcfa(coutRevient)} / HT aller: ${formaterFcfa(prixVenteAller)}`;
+    } else {
+      document.getElementById("comparatif-calcule").textContent = "Erreur de calcul";
+    }
+
+    // Afficher le montant stocké
+    const montantStockeFormate = montantStocke ? formaterFcfa(parseFloat(montantStocke)) : "Non défini";
+    document.getElementById("comparatif-stocke").textContent = montantStockeFormate;
+
+    // Mettre à jour les labels
+    const labelMontantStocke = document.getElementById("label-montant-stocke");
+    labelMontantStocke.textContent = montantStocke ? `Montant stocké dans la base : ${formaterFcfa(parseFloat(montantStocke))}` : "Montant stocké : non défini dans la base";
+
+    // Activer les boutons d'impression
+    document.getElementById("btn-imprimer-calcule").disabled = false;
+    document.getElementById("btn-imprimer-stocke").disabled = !montantStocke;
+    document.getElementById("btn-imprimer-les-deux").disabled = !montantStocke;
+
+    // Stocker le trajet_id pour l'impression
+    state.trajetId = reponse.trajet_id;
+    state.montantStocke = montantStocke;
   }
 
   async function calculerDevis() {
@@ -678,7 +894,7 @@
 
     conteneur.innerHTML = `
       <dl>
-        <dt>Distance aller simple</dt><dd>${state.distanceKm} km</dd>
+        <dt>Distance aller simple</dt><dd>${state.distanceKm ?? "distance indisponible"}${state.distanceKm != null ? " km" : ""}</dd>
         <dt>Consommation totale</dt><dd>${r.consommation_totale.toFixed(2)} L</dd>
         <dt>Coût carburant</dt><dd>${formaterFcfa(r.cout_carburant)}</dd>
         <dt>Coût carburant × 4 (facturé)</dt><dd>${formaterFcfa(r.cout_carburant_x4)}</dd>

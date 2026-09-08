@@ -25,6 +25,7 @@ from core.db import (
     inserer_trajet,
     list_trajets,
     mettre_a_jour_trajet,
+    obtenir_trajet_par_id,
     obtenir_utilisateur_par_id,
     rechercher_lieux,
     rechercher_trajet,
@@ -258,6 +259,8 @@ def api_resoudre():
             "origine_point": None,
             "destination_point": None,
             "geometrie": None,
+            "trajet_id": trajet_connu["id"],
+            "montant_aller": trajet_connu["montant_aller"],
         })
 
     try:
@@ -381,11 +384,13 @@ def api_devis_pdf():
         return erreur
 
     resultat = calculer_devis(entree)
+    montant_aller = payload.get("montant_aller")
     pdf = generer_pdf_devis(
         entree,
         resultat,
         origine=payload.get("origine"),
         destination=payload.get("destination"),
+        montant_aller_stoque=float(montant_aller) if montant_aller else None,
     )
     return send_file(
         BytesIO(pdf),

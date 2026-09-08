@@ -42,6 +42,7 @@ def generer_pdf_devis(
     resultat: DevisResult,
     origine: str | None = None,
     destination: str | None = None,
+    montant_aller_stoque: float | None = None,
 ) -> bytes:
     """Retourne une fiche de devis PDF sans écrire sur le disque."""
     sortie = BytesIO()
@@ -120,6 +121,10 @@ def generer_pdf_devis(
         ["Distance aller simple", f"{entree.distance_km:.1f} km"],
         ["Catégorie de car", categorie],
     ]
+    if montant_aller_stoque is not None:
+        trajet.append(
+            ["Montant préenregistré", formater_fcfa(float(montant_aller_stoque))]
+        )
     table_trajet = Table(trajet, colWidths=[4.4 * cm, 12.2 * cm])
     table_trajet.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F3F5F6")),
@@ -154,6 +159,22 @@ def generer_pdf_devis(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
     ]))
     elements.append(total)
+
+    if montant_aller_stoque is not None:
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph("Comparaison", section))
+        elements.append(Paragraph(
+            f"<b>Devis calculé</b> : {formater_fcfa(total_montant)} TTC · "
+            f"<b>Montant préenregistré</b> : {formater_fcfa(float(montant_aller_stoque))} F CFA",
+            ParagraphStyle(
+                "CaTransComparaison",
+                parent=styles["Normal"],
+                fontSize=9,
+                leading=13,
+                textColor=MUTED,
+            ),
+        ))
+        elements.append(Spacer(1, 12))
 
     elements.append(Paragraph("Paramètres du voyage", section))
     parametres = [

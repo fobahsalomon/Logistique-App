@@ -188,6 +188,48 @@ input:focus { border-color: var(--yellow); }
   justify-content: space-between;
 }
 
+#section-comparatif { margin-top: 20px; }
+
+.comparatif-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.comparatif-labels { margin-bottom: 10px; }
+.montant-stocke { font-weight: 600; }
+
+.comparatif-ligne {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.comparatif-carte {
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+}
+
+.comparatif-titre {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.comparatif-valeur {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .table-places {
   width: 100%;
   border-collapse: collapse;
@@ -360,6 +402,8 @@ dialog.modal h3 { margin: 0 0 20px; font-size: 16px; font-weight: 600; }
 }
 
 @media (max-width: 640px) {
+  .comparatif-ligne { grid-template-columns: 1fr; }
+
   .topbar {
     flex-direction: column;
     gap: 4px;
