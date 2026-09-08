@@ -672,3 +672,80 @@ def test_api_refuse_de_retrograder_le_dernier_admin(client_admin):
 
     row = app_module.obtenir_utilisateur_par_id(admin_id)
     assert row["role"] == "ADMIN"
+
+
+# --------------------------------------------------- auto-changement de mot de passe
+
+def test_page_mon_compte_accessible(client):
+    rep = client.get("/mon-compte")
+    assert rep.status_code == 200
+    assert b"Changer mon mot de passe" in rep.data
+
+
+def test_mon_compte_inaccessible_sans_connexion(client_anonyme):
+    rep = client_anonyme.get("/mon-compte", follow_redirects=False)
+    assert rep.status_code == 302
+    assert "/login" in rep.headers["Location"]
+
+
+def test_changement_mot_de_passe_reussi(client):
+    rep = client.post("/mon-compte/changement-mot-de-passe", json={
+        "ancien_mot_de_passe": "testpass",
+        "nouveau_mot_de_passe": "nouveau-mdp-1234",
+        "confirmation": "nouveau-mdp-1234",
+    })
+    assert rep.status_code == 200
+
+    from core.db import verifier_mot_de_passe
+    assert verifier_mot_de_passe("testuser", "nouveau-mdp-1234") is not None
+    assert verifier_mot_de_passe("testuser", "testpass") is None
+
+
+def test_changement_mot_de_passe_refuse_si_ancien_incorrect(client):
+    rep = client.post("/mon-compte/changement-mot-de-passe", json={
+        "ancien_mot_de_passe": "mauvais-mdp",
+        "nouveau_mot_de_passe": "nouveau-mdp-1234",
+        "confirmation": "nouveau-mdp-1234",
+    })
+    assert rep.status_code == 403
+
+    from core.db import verifier_mot_de_passe
+    assert verifier_mot_de_passe("testuser", "testpass") is not None
+
+
+def test_changement_mot_de_passe_refuse_si_confirmation_differente(client):
+    rep = client.post("/mon-compte/changement-mot-de-passe", json={
+        "ancien_mot_de_passe": "testpass",
+        "nouveau_mot_de_passe": "nouveau-mdp-1234",
+        "confirmation": "autre-chose",
+    })
+    assert rep.status_code == 400
+
+
+def test_changement_mot_de_passe_refuse_si_trop_court(client):
+    rep = client.post("/mon-compte/changement-mot-de-passe", json={
+        "ancien_mot_de_passe": "testpass",
+        "nouveau_mot_de_passe": "court",
+        "confirmation": "court",
+    })
+    assert rep.status_code == 400
+
+
+def test_changement_mot_de_passe_cree_une_entree_audit(client):
+    client.post("/mon-compte/changement-mot-de-passe", json={
+        "ancien_mot_de_passe": "testpass",
+        "nouveau_mot_de_passe": "nouveau-mdp-1234",
+        "confirmation": "nouveau-mdp-1234",
+    })
+    logs = app_module.lister_audit_logs(action="MOT_DE_PASSE_CHANGE")
+    assert any(log["username"] == "testuser" for log in logs)
+
+
+def test_page_connexion_ne_contient_plus_de_donnees_personnelles(client_anonyme):
+    rep = client_anonyme.get("/login")
+    assert rep.status_code == 200
+    contenu = rep.data.decode()
+    assert "fobahsalomon" not in contenu
+    assert "fobahngouansalomon" not in contenu
+    assert "+225" not in contenu
+    assert "administrateur de votre entreprise" in contenu

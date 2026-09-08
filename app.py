@@ -685,5 +685,31 @@ def page_mes_proformas():
     return render_template("mes_proformas.html", proformas=lister_proformas_par_agent(current_user.id))
 
 
+@app.get("/mon-compte")
+def page_mon_compte():
+    return render_template("mon_compte.html")
+
+
+@app.post("/mon-compte/changement-mot-de-passe")
+def api_changer_mon_mot_de_passe():
+    payload = request.get_json(force=True, silent=True) or {}
+    ancien = payload.get("ancien_mot_de_passe") or ""
+    nouveau = payload.get("nouveau_mot_de_passe") or ""
+    confirmation = payload.get("confirmation") or ""
+
+    if not ancien or not nouveau or not confirmation:
+        return jsonify({"erreur": "Tous les champs sont requis."}), 400
+    if len(nouveau) < 8:
+        return jsonify({"erreur": "Le nouveau mot de passe doit contenir au moins 8 caractères."}), 400
+    if nouveau != confirmation:
+        return jsonify({"erreur": "La confirmation ne correspond pas au nouveau mot de passe."}), 400
+    if verifier_mot_de_passe(current_user.username, ancien) is None:
+        return jsonify({"erreur": "Mot de passe actuel incorrect."}), 403
+
+    definir_mot_de_passe(current_user.username, nouveau)
+    enregistrer_audit(current_user.id, "MOT_DE_PASSE_CHANGE", None, request.remote_addr)
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=int(os.environ.get("PORT", 5000)))

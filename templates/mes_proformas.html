@@ -7,18 +7,8 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">CA TRANS<span>.</span></div>
-    <div class="subtitle">Mes demandes de proforma</div>
-    <div class="compte">
-      <span class="compte-nom">{{ current_user.username }}</span>
-      <a href="{{ url_for('index') }}" class="lien-secondaire">Application</a>
-      {% if current_user.is_admin %}
-        <a href="{{ url_for('page_proformas_en_attente') }}" class="lien-secondaire">Administration</a>
-      {% endif %}
-      <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
-    </div>
-  </header>
+  {% set active = 'mes-proformas' %}
+  {% include "_nav.html" %}
 
   <main class="panel-full">
     <section class="panel">

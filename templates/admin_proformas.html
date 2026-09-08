@@ -7,22 +7,10 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">CA TRANS<span>.</span></div>
-    <div class="subtitle">Administration</div>
-    <div class="compte">
-      <span class="compte-nom">{{ current_user.username }}</span>
-      <a href="{{ url_for('index') }}" class="lien-secondaire">Application</a>
-      <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
-    </div>
-  </header>
-
-  <nav class="panel-full admin-nav">
-    <a href="{{ url_for('page_proformas_en_attente') }}" class="btn btn-mode-active">Validation</a>
-    <a href="{{ url_for('page_proformas_historique') }}" class="btn">Historique</a>
-    <a href="{{ url_for('page_utilisateurs') }}" class="btn">Utilisateurs</a>
-    <a href="{{ url_for('page_audit') }}" class="btn">Audit</a>
-  </nav>
+  {% set active = 'admin' %}
+  {% include "_nav.html" %}
+  {% set sub_active = 'validation' %}
+  {% include "_admin_subnav.html" %}
 
   <main class="panel-full">
     <section class="panel">

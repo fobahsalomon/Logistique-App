@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mon compte — CA TRANS</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  {% set active = 'mon-compte' %}
+  {% include "_nav.html" %}
+
+  <main class="panel-full">
+    <section class="panel compte-panel">
+      <h2>Mon compte</h2>
+      <p class="muted" style="margin-bottom:18px;">Connecté en tant que <strong>{{ current_user.username }}</strong> ({{ current_user.role }})</p>
+
+      <h3 class="compte-souscritre">Changer mon mot de passe</h3>
+      <form id="form-mot-de-passe">
+        <div class="field">
+          <label for="ancien-mdp">Mot de passe actuel</label>
+          <input id="ancien-mdp" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="field">
+          <label for="nouveau-mdp">Nouveau mot de passe</label>
+          <input id="nouveau-mdp" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+        <div class="field">
+          <label for="confirmation-mdp">Confirmer le nouveau mot de passe</label>
+          <input id="confirmation-mdp" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+        <p id="mdp-message" class="statut" hidden></p>
+        <button type="submit" class="btn btn-primary">Mettre à jour le mot de passe</button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    document.getElementById("form-mot-de-passe").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = document.getElementById("mdp-message");
+      const btn = event.target.querySelector("button[type=submit]");
+      const original = btn.textContent;
+
+      const payload = {
+        ancien_mot_de_passe: document.getElementById("ancien-mdp").value,
+        nouveau_mot_de_passe: document.getElementById("nouveau-mdp").value,
+        confirmation: document.getElementById("confirmation-mdp").value,
+      };
+
+      btn.disabled = true;
+      btn.textContent = "Mise à jour...";
+      message.hidden = true;
+
+      try {
+        const resp = await fetch("/mon-compte/changement-mot-de-passe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+
+        message.hidden = false;
+        if (!resp.ok) {
+          message.className = "statut erreur";
+          message.textContent = data.erreur || "Erreur lors de la mise à jour.";
+        } else {
+          message.className = "statut base";
+          message.textContent = "Mot de passe mis à jour avec succès.";
+          event.target.reset();
+        }
+      } catch (err) {
+        message.hidden = false;
+        message.className = "statut erreur";
+        message.textContent = "Erreur de connexion.";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    });
+  </script>
+</body>
+</html>

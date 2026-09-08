@@ -13,18 +13,8 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">CA TRANS<span>.</span></div>
-    <div class="subtitle">Fiche de calcul convoi</div>
-    <div class="compte">
-      <span class="compte-nom">{{ current_user.username }}</span>
-      <a href="{{ url_for('page_mes_proformas') }}" class="lien-secondaire">Mes proformas</a>
-      {% if current_user.is_admin %}
-        <a href="{{ url_for('page_proformas_en_attente') }}" class="lien-secondaire">Administration</a>
-      {% endif %}
-      <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
-    </div>
-  </header>
+  {% set active = 'accueil' %}
+  {% include "_nav.html" %}
 
   <main class="layout">
     <section class="panel panel-main">
