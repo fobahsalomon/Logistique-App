@@ -8,7 +8,7 @@ from pathlib import Path
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "db" / "ca_trans.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "ca_trans.db"
 
 ABBREVIATIONS = {
     "SP": "SAN PEDRO",

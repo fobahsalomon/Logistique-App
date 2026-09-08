@@ -32,23 +32,25 @@
     maxZoom: 19,
   }).setView(CI_CENTER, 7);
 
-  // Fond CartoDB Voyager — plus lisible (noms de rues, détails visuels)
+  // Fond OSM standard — par défaut, aucune clé API requise
+  const fondOsm = L.tileLayer(
+    "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+      maxNativeZoom: 19,
+    }
+  ).addTo(carte);
+
+  // Fond CartoDB Voyager — plus lisible (noms de rues, détails visuels), mais
+  // nécessite désormais une clé API CARTO pour un usage sans filigrane ; laissé
+  // en option dans le sélecteur de couches, non actif par défaut.
   const fondVoyager = L.tileLayer(
     "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
     {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
       subdomains: "abcd",
-      maxZoom: 19,
-      maxNativeZoom: 19,
-    }
-  ).addTo(carte);
-
-  // Fond OSM standard — alternative, plus dense en petites routes/pistes
-  const fondOsm = L.tileLayer(
-    "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
       maxNativeZoom: 19,
     }

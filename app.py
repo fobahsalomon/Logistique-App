@@ -57,6 +57,7 @@ from core.devis_service import DevisValidationError, devis_input_from_payload, s
 from core.proforma_pdf import generer_proforma_pdf
 from core.pricing import calculer_devis, frais_mission_defaut
 from core.routing import RoutingError, _geocoder_nominatim, _geocoder_nominatim_multi, calculer_itineraire, get_client, resoudre_itineraire
+from data.seed_lieux import seed as seed_lieux
 from data.seed_trajets import seed as seed_trajets
 
 try:
@@ -108,6 +109,7 @@ def _bootstrap_comptes_env() -> None:
 with app.app_context():
     init_db()
     seed_trajets()  # idempotent : n'insère les 70 trajets connus que si absents
+    seed_lieux()  # idempotent : n'insère les lieux connus que si la table est vide
     _bootstrap_comptes_env()
 
 
