@@ -49,8 +49,9 @@
                   <td>{{ p['client_nom'] or '—' }}</td>
                   <td>{{ p['origine'] or '?' }} → {{ p['destination'] or '?' }}</td>
                   <td>
+                    <a class="btn btn-sm" href="{{ url_for('page_proforma_preview', proforma_id=p['id']) }}" target="_blank" rel="noopener">Prévisualiser</a>
                     <button class="btn btn-primary" onclick="validerProforma({{ p['id'] }})">Valider</button>
-                    <button class="btn btn-danger" onclick="rejeterProforma({{ p['id'] }})">Rejeter</button>
+                    <button class="btn btn-danger" onclick="ouvrirModalRejet({{ p['id'] }})">Rejeter</button>
                   </td>
                 </tr>
               {% endfor %}
@@ -60,6 +61,20 @@
       {% endif %}
     </section>
   </main>
+
+  <dialog id="modal-rejet" class="modal">
+    <h3>Motif du rejet</h3>
+    <form id="form-rejet" method="dialog">
+      <div class="field">
+        <label for="rejet-motif">Raison (visible par l'agent)</label>
+        <textarea id="rejet-motif" rows="4" placeholder="Ex : Prix hors barème, trajet incorrect..." style="width:100%; background:var(--panel-alt); border:1px solid var(--line); color:var(--text); border-radius:6px; padding:10px 12px; font-family:inherit; font-size:14px;"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-confirmer-rejet" type="submit" class="btn btn-danger">Confirmer le rejet</button>
+        <button id="btn-annuler-rejet" type="button" class="btn">Annuler</button>
+      </div>
+    </form>
+  </dialog>
 
   <script>
     async function validerProforma(id) {
@@ -71,8 +86,26 @@
       document.getElementById(`proforma-${id}`).remove();
     }
 
-    async function rejeterProforma(id) {
-      const motif = prompt("Motif du rejet (optionnel) :") || "";
+    let proformaARejeter = null;
+    const modalRejet = document.getElementById("modal-rejet");
+
+    function ouvrirModalRejet(id) {
+      proformaARejeter = id;
+      document.getElementById("rejet-motif").value = "";
+      modalRejet.showModal();
+    }
+
+    document.getElementById("btn-annuler-rejet").addEventListener("click", () => {
+      proformaARejeter = null;
+      modalRejet.close();
+    });
+
+    document.getElementById("form-rejet").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (proformaARejeter === null) return;
+      const motif = document.getElementById("rejet-motif").value.trim();
+      const id = proformaARejeter;
+
       const resp = await fetch(`/admin/proformas/${id}/rejeter`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -80,8 +113,11 @@
       });
       const data = await resp.json();
       if (!resp.ok) { alert(data.erreur || "Erreur."); return; }
-      document.getElementById(`proforma-${id}`).remove();
-    }
+      modalRejet.close();
+      proformaARejeter = null;
+      const row = document.getElementById(`proforma-${id}`);
+      if (row) row.remove();
+    });
   </script>
 </body>
 </html>

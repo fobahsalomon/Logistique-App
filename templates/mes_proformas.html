@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mes proformas — CA TRANS</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">CA TRANS<span>.</span></div>
+    <div class="subtitle">Mes demandes de proforma</div>
+    <div class="compte">
+      <span class="compte-nom">{{ current_user.username }}</span>
+      <a href="{{ url_for('index') }}" class="lien-secondaire">Application</a>
+      {% if current_user.is_admin %}
+        <a href="{{ url_for('page_proformas_en_attente') }}" class="lien-secondaire">Administration</a>
+      {% endif %}
+      <a href="{{ url_for('logout') }}" class="lien-secondaire">Déconnexion</a>
+    </div>
+  </header>
+
+  <main class="panel-full">
+    <section class="panel">
+      <h2>Mes demandes de proforma</h2>
+      {% if not proformas %}
+        <p class="muted">Vous n'avez soumis aucun devis pour validation.</p>
+      {% else %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Soumis le</th>
+                <th>Client</th>
+                <th>Trajet</th>
+                <th>Statut</th>
+                <th>Détails</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in proformas %}
+                <tr>
+                  <td>{{ p['emis_le'] }}</td>
+                  <td>{{ p['client_nom'] or '—' }}</td>
+                  <td>{{ p['origine'] or '?' }} → {{ p['destination'] or '?' }}</td>
+                  <td>
+                    {% if p['statut'] == 'EN_ATTENTE_VALIDATION' %}
+                      <span class="badge-statut badge-attente">EN ATTENTE</span>
+                    {% elif p['statut'] == 'VALIDE' %}
+                      <span class="badge-statut badge-validee">VALIDÉE</span>
+                    {% else %}
+                      <span class="badge-statut badge-rejetee">REJETÉE</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if p['statut'] == 'VALIDE' %}
+                      N° {{ p['numero_proforma'] }}
+                    {% elif p['statut'] == 'REJETE' %}
+                      <span class="statut erreur" style="margin:0; padding:6px 10px; display:inline-block;">
+                        Motif : {{ p['motif_rejet'] or 'non précisé' }}
+                      </span>
+                    {% else %}
+                      <span class="muted">En attente de validation par un administrateur.</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

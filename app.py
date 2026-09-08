@@ -32,6 +32,7 @@ from core.db import (
     lister_audit_logs,
     lister_proformas_en_attente,
     lister_proformas_historique,
+    lister_proformas_par_agent,
     lister_utilisateurs,
     list_trajets,
     mettre_a_jour_trajet,
@@ -564,17 +565,22 @@ def page_proformas_historique():
     )
 
 
+def _reconstituer_devis(row):
+    from core.pricing import DevisInput, DevisResult
+
+    entree = DevisInput(**json.loads(row["devis_input_json"]))
+    resultat = DevisResult(**json.loads(row["devis_result_json"]))
+    return entree, resultat
+
+
 @app.get("/admin/proformas/<int:proforma_id>/pdf")
 @role_requis_page("ADMIN")
 def page_proforma_pdf(proforma_id: int):
-    from core.pricing import DevisInput, DevisResult
-
     row = obtenir_proforma_par_id(proforma_id)
     if row is None or row["statut"] != "VALIDE":
         return render_template("erreur_403.html"), 404
 
-    entree = DevisInput(**json.loads(row["devis_input_json"]))
-    resultat = DevisResult(**json.loads(row["devis_result_json"]))
+    entree, resultat = _reconstituer_devis(row)
     pdf = generer_proforma_pdf(
         entree,
         resultat,
@@ -592,6 +598,36 @@ def page_proforma_pdf(proforma_id: int):
         mimetype="application/pdf",
         as_attachment=True,
         download_name=f"proforma-{row['numero_proforma']}.pdf",
+    )
+
+
+@app.get("/admin/proformas/<int:proforma_id>/preview")
+@role_requis_page("ADMIN")
+def page_proforma_preview(proforma_id: int):
+    """Aperçu du PDF avant validation — jamais de numéro officiel, quel que
+    soit le statut de la proforma (toujours rendu comme "APERÇU — NON
+    VALIDÉ", y compris pour relire une proforma déjà rejetée)."""
+    row = obtenir_proforma_par_id(proforma_id)
+    if row is None or row["statut"] == "VALIDE":
+        return render_template("erreur_403.html"), 404
+
+    entree, resultat = _reconstituer_devis(row)
+    pdf = generer_proforma_pdf(
+        entree,
+        resultat,
+        origine=row["origine"],
+        destination=row["destination"],
+        client_nom=row["client_nom"] or "Client",
+        responsable_flotte=row["responsable_flotte"] or "GNAYE SARAH",
+        date_debut=row["date_debut"],
+        date_fin=row["date_fin"],
+        emis_le=datetime.fromisoformat(row["emis_le"]),
+    )
+    return send_file(
+        BytesIO(pdf),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"apercu-proforma-{proforma_id}.pdf",
     )
 
 
@@ -635,6 +671,14 @@ def api_changer_role(user_id: int):
 @role_requis_page("ADMIN")
 def page_audit():
     return render_template("admin_audit.html", logs=lister_audit_logs())
+
+
+@app.get("/mes-proformas")
+def page_mes_proformas():
+    """Vue agent : suivi de ses propres devis soumis, avec statut et motif
+    de rejet éventuel — accessible à tout utilisateur connecté (AGENT ou
+    ADMIN), pas seulement aux administrateurs."""
+    return render_template("mes_proformas.html", proformas=lister_proformas_par_agent(current_user.id))
 
 
 if __name__ == "__main__":

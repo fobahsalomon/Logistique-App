@@ -572,6 +572,22 @@ def lister_proformas_en_attente(conn: sqlite3.Connection | None = None) -> list[
     return rows
 
 
+def lister_proformas_par_agent(
+    agent_id: int, conn: sqlite3.Connection | None = None
+) -> list[sqlite3.Row]:
+    """Toutes les proformas soumises par un agent, tous statuts confondus —
+    alimente la vue "Mes demandes de proforma" côté agent."""
+    close = conn is None
+    conn = conn or get_connection()
+    rows = conn.execute(
+        """SELECT * FROM proformas WHERE agent_id = ? ORDER BY created_at DESC""",
+        (agent_id,),
+    ).fetchall()
+    if close:
+        conn.close()
+    return rows
+
+
 def prochain_numero_proforma(jour: str, conn: sqlite3.Connection) -> int:
     """Incrémente et renvoie le compteur séquentiel du jour donné ('DDMMYY').
 

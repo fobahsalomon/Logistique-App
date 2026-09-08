@@ -502,6 +502,62 @@ def test_telechargement_pdf_proforma_validee(client_admin):
     assert numero in rep.headers["Content-Disposition"]
 
 
+def test_proforma_rejetee_ne_peut_pas_etre_validee(client_admin):
+    """Une proforma déjà rejetée ne peut plus être numérotée."""
+    proforma_id = client_admin.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+    client_admin.post(f"/admin/proformas/{proforma_id}/rejeter", json={"motif": "Prix hors barème"})
+
+    rep = client_admin.post(f"/admin/proformas/{proforma_id}/valider")
+    assert rep.status_code == 409
+
+    row = app_module.obtenir_proforma_par_id(proforma_id)
+    assert row["statut"] == "REJETE"
+    assert row["numero_proforma"] is None
+
+
+def test_agent_ne_peut_pas_previsualiser(client):
+    proforma_id = client.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+    rep = client.get(f"/admin/proformas/{proforma_id}/preview")
+    assert rep.status_code == 403
+
+
+def test_admin_peut_previsualiser_avant_validation(client_admin):
+    proforma_id = client_admin.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+
+    rep = client_admin.get(f"/admin/proformas/{proforma_id}/preview")
+    assert rep.status_code == 200
+    assert rep.mimetype == "application/pdf"
+
+    # La validation reste possible après un simple aperçu, la prévisualisation
+    # ne consomme pas la proforma.
+    row = app_module.obtenir_proforma_par_id(proforma_id)
+    assert row["statut"] == "EN_ATTENTE_VALIDATION"
+
+
+def test_previsualisation_indisponible_pour_proforma_validee(client_admin):
+    proforma_id = client_admin.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+    client_admin.post(f"/admin/proformas/{proforma_id}/valider")
+
+    rep = client_admin.get(f"/admin/proformas/{proforma_id}/preview")
+    assert rep.status_code == 404
+
+
+def test_mes_proformas_liste_les_demandes_de_lagent(client):
+    client.post("/api/proformas", json=_payload_devis())
+
+    rep = client.get("/mes-proformas")
+    assert rep.status_code == 200
+    assert b"EN ATTENTE" in rep.data
+
+
+def test_rejet_enregistre_une_entree_audit(client_admin):
+    proforma_id = client_admin.post("/api/proformas", json=_payload_devis()).get_json()["id"]
+    client_admin.post(f"/admin/proformas/{proforma_id}/rejeter", json={"motif": "Trajet incorrect"})
+
+    logs = app_module.lister_audit_logs(action="PROFORMA_REJETEE")
+    assert any(log["details"] == "Trajet incorrect" for log in logs)
+
+
 # ------------------------------------------------------------------- audit
 
 def test_login_cree_une_entree_audit(client):

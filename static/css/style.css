@@ -615,6 +615,19 @@ dialog.modal h3 { margin: 0 0 20px; font-size: 16px; font-weight: 600; }
   margin: 20px auto 0;
 }
 
+.badge-statut {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.badge-attente { background: rgba(242, 183, 5, 0.15); border: 1px solid var(--yellow); color: var(--yellow); }
+.badge-validee { background: rgba(76, 175, 109, 0.15); border: 1px solid var(--green); color: var(--green); }
+.badge-rejetee { background: rgba(226, 87, 76, 0.15); border: 1px solid var(--red); color: var(--red); }
+
 /* -------------------------------------------------------- carte secondaire */
 .details-carte { margin: 8px 0 12px; }
 .details-carte summary { margin-bottom: 8px; }
