@@ -12,7 +12,11 @@ from dataclasses import dataclass
 
 import requests
 
-OSRM_BASE = "http://router.project-osrm.org"
+# OSRM servers to try in order (public instances)
+OSRM_SERVERS = [
+    "http://router.project-osrm.org",
+    "https://routing.openstreetmap.de/routed-car",
+]
 NOMINATIM_BASE = "https://nominatim.openstreetmap.org"
 _UA = "CA-TRANS-Devis/1.0"
 
@@ -203,26 +207,30 @@ def calculer_itineraire(client, origine: tuple, destination: tuple) -> Itinerair
     o_lon, o_lat = origine
     d_lon, d_lat = destination
     coords = f"{o_lon},{o_lat};{d_lon},{d_lat}"
-    try:
-        rep = requests.get(
-            f"{OSRM_BASE}/route/v1/driving/{coords}",
-            params={"overview": "full", "geometries": "geojson"},
-            timeout=15,
-        )
-        rep.raise_for_status()
-        data = rep.json()
-        if data.get("code") != "Ok" or not data.get("routes"):
-            raise RoutingError(f"OSRM : pas de route trouvée ({data.get('code')})")
-        route = data["routes"][0]
-        return Itineraire(
-            distance_km=route["distance"] / 1000,
-            duree_min=route["duration"] / 60,
-            geometrie=route["geometry"],
-        )
-    except RoutingError:
-        raise
-    except Exception as exc:
-        raise RoutingError(f"Calcul d'itinéraire échoué : {exc}") from exc
+
+    # Try each OSRM server in order until one responds
+    for server in OSRM_SERVERS:
+        try:
+            rep = requests.get(
+                f"{server}/route/v1/driving/{coords}",
+                params={"overview": "full", "geometries": "geojson"},
+                timeout=15,
+            )
+            rep.raise_for_status()
+            data = rep.json()
+            if data.get("code") != "Ok" or not data.get("routes"):
+                continue  # Try next server
+
+            route = data["routes"][0]
+            return Itineraire(
+                distance_km=route["distance"] / 1000,
+                duree_min=route["duration"] / 60,
+                geometrie=route["geometry"],
+            )
+        except Exception:
+            continue  # Try next server
+
+    raise RoutingError(f"Tous les serveurs OSRM sont indisponibles ou la route n'a pas pu être trouvée.")
 
 
 def resoudre_itineraire(client, origine_texte: str, destination_texte: str):

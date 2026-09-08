@@ -229,6 +229,16 @@ def supprimer_trajet(trajet_id: int, conn: sqlite3.Connection | None = None) -> 
     return affected
 
 
+def obtenir_trajet_par_id(trajet_id: int, conn: sqlite3.Connection | None = None) -> sqlite3.Row | None:
+    """Get a trajet by ID"""
+    close = conn is None
+    conn = conn or get_connection()
+    row = conn.execute("SELECT * FROM trajets WHERE id = ?", (trajet_id,)).fetchone()
+    if close:
+        conn.close()
+    return row
+
+
 # ---------------------------------------------------------------- lieux_connus
 
 def rechercher_lieu(texte: str, conn: sqlite3.Connection | None = None) -> sqlite3.Row | None:

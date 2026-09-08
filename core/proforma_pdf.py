@@ -115,6 +115,7 @@ def generer_proforma_pdf(
     date_debut: str | None = None,
     date_fin: str | None = None,
     emis_le: datetime | None = None,
+    montant_aller_stoque: float | None = None,
 ) -> bytes:
     """Retourne une facture proforma PDF au format CA TRANS.
 
@@ -259,6 +260,14 @@ def generer_proforma_pdf(
     ]))
     elements.append(totals_table)
     elements.append(Spacer(1, 12))
+
+    if montant_aller_stoque is not None:
+        elements.append(Paragraph(
+            f"<b>Comparaison</b> — Devis calculé : {formater_fcfa(montant_ttc)} TTC · "
+            f"Montant préenregistré (aller) : {formater_fcfa(float(montant_aller_stoque))}",
+            meta_style,
+        ))
+        elements.append(Spacer(1, 10))
 
     montant_texte = nombre_en_lettres(int(round(montant_ttc)))
     elements.append(Paragraph("Arrêté la présente facture proforma à la somme de :", bold_small))
