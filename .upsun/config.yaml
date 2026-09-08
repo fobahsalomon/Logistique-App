@@ -3,7 +3,6 @@ applications:
     source:
       root: "/"
     type: "python:3.11"
-    disk: 512
     hooks:
       build: |
         set -e
