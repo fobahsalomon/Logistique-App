@@ -109,19 +109,20 @@ def generer_proforma_pdf(
     resultat: DevisResult,
     origine: str | None = None,
     destination: str | None = None,
-    num_proforma: int | str | None = None,
+    numero_proforma: str | None = None,
     client_nom: str = "Client",
     responsable_flotte: str = "GNAYE SARAH",
     date_debut: str | None = None,
     date_fin: str | None = None,
+    emis_le: datetime | None = None,
 ) -> bytes:
-    """Retourne une facture proforma PDF au format CA TRANS."""
-    today = datetime.now().strftime("%d/%m/%Y")
-    if num_proforma is None:
-        num_proforma = int(datetime.now().strftime("%d%H%M%S"))
-    elif isinstance(num_proforma, str):
-        chiffres = "".join(ch for ch in num_proforma if ch.isdigit())
-        num_proforma = int(chiffres) if chiffres else int(datetime.now().strftime("%d%H%M%S"))
+    """Retourne une facture proforma PDF au format CA TRANS.
+
+    `numero_proforma` ne doit être renseigné QUE pour une proforma validée
+    par un administrateur (format PRO-DDMMYY-NNN, attribué par
+    core.db.valider_proforma). Sans numéro, le document est rendu comme un
+    aperçu non officiel — jamais avec un numéro fabriqué côté client."""
+    today = (emis_le or datetime.now()).strftime("%d/%m/%Y")
 
     def parse_date_to_fr(value: str | None, fallback: str = today) -> str:
         if not value:
@@ -183,13 +184,20 @@ def generer_proforma_pdf(
         Paragraph("Le transport public de personnes et de biens", subtitle_style),
     ])
 
-    right_block = [
-        Paragraph("FACTURE PROFORMA", proforma_style),
-        Paragraph(f"N° Proforma: CAT-PRO-{int(num_proforma):06d}", meta_style),
+    if numero_proforma:
+        right_block = [
+            Paragraph("FACTURE PROFORMA", proforma_style),
+            Paragraph(f"N° Proforma: {numero_proforma}", meta_style),
+        ]
+    else:
+        right_block = [
+            Paragraph("APERÇU — NON VALIDÉ", proforma_style),
+        ]
+    right_block.extend([
         Paragraph("Prestataire: CA TRANS SARL U", meta_style),
         Paragraph(f"Date: {today}", meta_style),
         Paragraph("Objet: Prestation de transport (convoi)", meta_style),
-    ]
+    ])
 
     header_table = Table([[left_block, right_block]], colWidths=[9.5 * cm, 6.3 * cm])
     header_table.setStyle(TableStyle([
@@ -273,10 +281,17 @@ def generer_proforma_pdf(
     elements.append(signature_table)
     elements.append(Spacer(1, 18))
 
-    elements.append(Paragraph(
-        "NB: Cette facture n'est valable qu'après signature de la charte de location de car de CATRANS par le client.",
-        note_style,
-    ))
+    if numero_proforma:
+        elements.append(Paragraph(
+            "NB: Cette facture n'est valable qu'après signature de la charte de location de car de CATRANS par le client.",
+            note_style,
+        ))
+    else:
+        elements.append(Paragraph(
+            "APERÇU NON OFFICIEL — ce document ne constitue pas une facture proforma "
+            "tant qu'il n'a pas été validé par un administrateur CA TRANS.",
+            note_style,
+        ))
     elements.append(Spacer(1, 20))
 
     line = Table([[" "]], colWidths=[15.5 * cm])

@@ -42,8 +42,14 @@ def generer_pdf_devis(
     resultat: DevisResult,
     origine: str | None = None,
     destination: str | None = None,
+    numero_proforma: str | None = None,
+    emis_le: datetime | None = None,
 ) -> bytes:
-    """Retourne une fiche de devis PDF sans écrire sur le disque."""
+    """Retourne une fiche de devis PDF sans écrire sur le disque.
+
+    `numero_proforma`/`emis_le` ne sont renseignés que pour une proforma
+    validée par un administrateur : le numéro officiel n'apparaît alors sur
+    le PDF que dans ce cas, jamais sur un aperçu de devis non validé."""
     sortie = BytesIO()
     document = SimpleDocTemplate(
         sortie,
@@ -101,18 +107,29 @@ def generer_pdf_devis(
         leading=15,
         textColor=DARK,
     )
+    numero_style = ParagraphStyle(
+        "CaTransNumero",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=16,
+        textColor=YELLOW,
+        spaceAfter=2,
+    )
 
     origine = _texte(origine, "Point de départ")
     destination = _texte(destination, "Point d'arrivée")
     categorie = "58 places — VIP" if entree.nb_places == 58 else f"{entree.nb_places} places"
 
-    elements = [
-        Paragraph("CA TRANS", titre),
+    elements = [Paragraph("CA TRANS", titre)]
+    if numero_proforma:
+        elements.append(Paragraph(f"Proforma N° {numero_proforma}", numero_style))
+    elements.append(
         Paragraph(
-            f"Fiche de devis · Émise le {datetime.now().strftime('%d/%m/%Y à %H:%M')}",
+            f"Fiche de devis · Émise le {(emis_le or datetime.now()).strftime('%d/%m/%Y à %H:%M')}",
             sous_titre,
-        ),
-    ]
+        )
+    )
 
     trajet = [
         ["Origine", origine],
