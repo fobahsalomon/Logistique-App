@@ -30,8 +30,63 @@
 
       <div class="login-contact">
         <p class="muted">Mot de passe oublié ? Veuillez contacter l'administrateur de votre entreprise pour réinitialiser votre compte.</p>
+        <button type="button" id="btn-demande-reinit" class="btn btn-sm">Signaler / Demander une réinitialisation</button>
       </div>
     </div>
   </div>
+
+  <dialog id="modal-demande-reinit" class="modal">
+    <h3>Demander une réinitialisation</h3>
+    <form id="form-demande-reinit" method="dialog">
+      <div class="field">
+        <label for="demande-username">Nom d'utilisateur / Identifiant</label>
+        <input id="demande-username" required autofocus>
+      </div>
+      <p id="demande-message" class="statut" hidden></p>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">Envoyer la demande</button>
+        <button type="button" id="btn-annuler-demande-reinit" class="btn">Annuler</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const modalDemande = document.getElementById("modal-demande-reinit");
+    document.getElementById("btn-demande-reinit").addEventListener("click", () => {
+      document.getElementById("demande-message").hidden = true;
+      document.getElementById("demande-username").value = "";
+      modalDemande.showModal();
+    });
+    document.getElementById("btn-annuler-demande-reinit").addEventListener("click", () => {
+      modalDemande.close();
+    });
+    document.getElementById("form-demande-reinit").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const username = document.getElementById("demande-username").value.trim();
+      const message = document.getElementById("demande-message");
+      if (!username) return;
+
+      try {
+        const resp = await fetch("/api/demande-reinitialisation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username }),
+        });
+        message.hidden = false;
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          message.className = "statut erreur";
+          message.textContent = data.erreur || "Erreur lors de l'envoi.";
+        } else {
+          message.className = "statut base";
+          message.textContent = "Demande envoyée. Un administrateur va la traiter.";
+        }
+      } catch (err) {
+        message.hidden = false;
+        message.className = "statut erreur";
+        message.textContent = "Erreur de connexion.";
+      }
+    });
+  </script>
 </body>
 </html>

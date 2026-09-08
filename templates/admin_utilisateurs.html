@@ -13,6 +13,34 @@
   {% include "_admin_subnav.html" %}
 
   <main class="panel-full">
+    {% if demandes %}
+      <section class="panel" style="margin-bottom:20px;">
+        <h2>Demandes de réinitialisation en attente</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Demandée le</th>
+                <th>Identifiant signalé</th>
+                <th>IP</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in demandes %}
+                <tr id="demande-{{ d['id'] }}">
+                  <td>{{ d['created_at'] }}</td>
+                  <td>{{ d['username'] }}</td>
+                  <td>{{ d['ip_address'] or '' }}</td>
+                  <td><button class="btn btn-sm" onclick="traiterDemande({{ d['id'] }})">Marquer comme traitée</button></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
     <section class="panel">
       <h2>Utilisateurs</h2>
       <div class="table-wrap">
@@ -71,6 +99,14 @@
       const data = await resp.json();
       if (!resp.ok) { alert(data.erreur || "Erreur."); return; }
       alert("Mot de passe réinitialisé.");
+    }
+
+    async function traiterDemande(id) {
+      const resp = await fetch(`/admin/demandes-reinitialisation/${id}/traiter`, { method: "POST" });
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.erreur || "Erreur."); return; }
+      const row = document.getElementById(`demande-${id}`);
+      if (row) row.remove();
     }
   </script>
 </body>

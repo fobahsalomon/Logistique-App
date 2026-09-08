@@ -2,9 +2,16 @@
   <a href="{{ url_for('index') }}" class="pill-nav__brand">CA TRANS<span>.</span></a>
   <div class="pill-nav__links">
     <a href="{{ url_for('index') }}" class="pill-nav__link {{ 'is-active' if active == 'accueil' else '' }}">Accueil</a>
-    <a href="{{ url_for('page_mes_proformas') }}" class="pill-nav__link {{ 'is-active' if active == 'mes-proformas' else '' }}">Mes proformas</a>
+    {% if not current_user.is_admin %}
+      <a href="{{ url_for('page_mes_proformas') }}" class="pill-nav__link {{ 'is-active' if active == 'mes-proformas' else '' }}">Mes proformas</a>
+    {% endif %}
     {% if current_user.is_admin %}
-      <a href="{{ url_for('page_proformas_en_attente') }}" class="pill-nav__link {{ 'is-active' if active == 'admin' else '' }}">Administration</a>
+      <a href="{{ url_for('page_proformas_en_attente') }}" class="pill-nav__link {{ 'is-active' if active == 'admin' else '' }}">
+        Administration
+        {% if nb_proformas_en_attente + nb_demandes_reinitialisation > 0 %}
+          <span class="notif-dot" title="{{ nb_proformas_en_attente }} proforma(s) en attente, {{ nb_demandes_reinitialisation }} demande(s) de réinitialisation"></span>
+        {% endif %}
+      </a>
     {% endif %}
     <a href="{{ url_for('page_mon_compte') }}" class="pill-nav__link {{ 'is-active' if active == 'mon-compte' else '' }}">Mon compte</a>
   </div>

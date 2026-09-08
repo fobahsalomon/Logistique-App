@@ -24,6 +24,8 @@ from flask_login import (
 
 from core.db import (
     DernierAdminError,
+    compter_demandes_en_attente,
+    creer_demande_reinitialisation,
     definir_mot_de_passe,
     definir_role,
     enregistrer_audit,
@@ -31,11 +33,13 @@ from core.db import (
     inserer_lieu,
     inserer_trajet,
     lister_audit_logs,
+    lister_demandes_en_attente,
     lister_proformas_en_attente,
     lister_proformas_historique,
     lister_proformas_par_agent,
     lister_utilisateurs,
     list_trajets,
+    marquer_demande_traitee,
     mettre_a_jour_trajet,
     creer_proforma,
     obtenir_proforma_par_id,
@@ -131,12 +135,27 @@ def charger_utilisateur(user_id: str):
 
 @app.before_request
 def exiger_connexion():
-    """Protège toute l'application par défaut : seules /login et les fichiers
-    statiques restent accessibles sans session valide."""
-    endpoints_publics = {"login", "static"}
+    """Protège toute l'application par défaut : seules /login, /api/demande-
+    reinitialisation et les fichiers statiques restent accessibles sans
+    session valide."""
+    endpoints_publics = {"login", "static", "api_demande_reinitialisation"}
     if request.endpoint in endpoints_publics or current_user.is_authenticated:
         return None
     return login_manager.unauthorized()
+
+
+@app.context_processor
+def injecter_notifications_admin():
+    """Rend le nombre d'éléments en attente (proformas + demandes de
+    réinitialisation) disponible dans tous les templates, pour la pastille
+    de notification affichée dès la connexion d'un admin — sans avoir à
+    modifier chaque route rendant une page authentifiée."""
+    if current_user.is_authenticated and getattr(current_user, "is_admin", False):
+        return {
+            "nb_proformas_en_attente": len(lister_proformas_en_attente()),
+            "nb_demandes_reinitialisation": compter_demandes_en_attente(),
+        }
+    return {"nb_proformas_en_attente": 0, "nb_demandes_reinitialisation": 0}
 
 
 def role_requis_api(*roles):
@@ -179,6 +198,21 @@ def login():
     login_user(Utilisateur(row))
     enregistrer_audit(row["id"], "LOGIN", None, request.remote_addr)
     return redirect(request.args.get("next") or url_for("index"))
+
+
+@app.post("/api/demande-reinitialisation")
+def api_demande_reinitialisation():
+    """Route publique (accessible sans connexion, depuis login.html) : un
+    utilisateur signale qu'il a besoin d'une réinitialisation de mot de
+    passe. N'effectue aucune réinitialisation elle-même — se contente
+    d'enregistrer une demande visible par les admins (pastille de
+    notification), qui traitent ensuite manuellement depuis /admin/utilisateurs."""
+    payload = request.get_json(force=True, silent=True) or {}
+    username = (payload.get("username") or "").strip()
+    if not username:
+        return jsonify({"erreur": "Identifiant requis."}), 400
+    creer_demande_reinitialisation(username, request.remote_addr)
+    return jsonify({"ok": True}), 201
 
 
 @app.get("/logout")
@@ -635,7 +669,20 @@ def page_proforma_preview(proforma_id: int):
 @app.get("/admin/utilisateurs")
 @role_requis_page("ADMIN")
 def page_utilisateurs():
-    return render_template("admin_utilisateurs.html", utilisateurs=lister_utilisateurs())
+    return render_template(
+        "admin_utilisateurs.html",
+        utilisateurs=lister_utilisateurs(),
+        demandes=lister_demandes_en_attente(),
+    )
+
+
+@app.post("/admin/demandes-reinitialisation/<int:demande_id>/traiter")
+@role_requis_api("ADMIN")
+def api_traiter_demande_reinitialisation(demande_id: int):
+    ok = marquer_demande_traitee(demande_id, current_user.id)
+    if not ok:
+        return jsonify({"erreur": "Demande introuvable ou déjà traitée."}), 409
+    return jsonify({"ok": True})
 
 
 @app.post("/admin/utilisateurs/<int:user_id>/reinitialiser-mot-de-passe")

@@ -117,6 +117,19 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS demandes_reinitialisation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            statut TEXT NOT NULL DEFAULT 'EN_ATTENTE',
+            ip_address TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            traitee_le TEXT,
+            traitee_par_id INTEGER REFERENCES utilisateurs(id)
+        )
+        """
+    )
     conn.commit()
     if close:
         conn.close()
@@ -822,3 +835,68 @@ def lister_audit_logs(
     if close:
         conn.close()
     return rows
+
+
+# ------------------------------------------------ demandes_reinitialisation
+
+STATUT_DEMANDE_EN_ATTENTE = "EN_ATTENTE"
+STATUT_DEMANDE_TRAITEE = "TRAITEE"
+
+
+def creer_demande_reinitialisation(
+    username: str, ip_address: str | None = None, conn: sqlite3.Connection | None = None
+) -> int:
+    close = conn is None
+    conn = conn or get_connection()
+    cur = conn.execute(
+        "INSERT INTO demandes_reinitialisation (username, ip_address) VALUES (?, ?)",
+        (username, ip_address),
+    )
+    conn.commit()
+    demande_id = cur.lastrowid
+    if close:
+        conn.close()
+    return demande_id
+
+
+def lister_demandes_en_attente(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    close = conn is None
+    conn = conn or get_connection()
+    rows = conn.execute(
+        """SELECT * FROM demandes_reinitialisation
+           WHERE statut = ? ORDER BY created_at""",
+        (STATUT_DEMANDE_EN_ATTENTE,),
+    ).fetchall()
+    if close:
+        conn.close()
+    return rows
+
+
+def compter_demandes_en_attente(conn: sqlite3.Connection | None = None) -> int:
+    close = conn is None
+    conn = conn or get_connection()
+    total = conn.execute(
+        "SELECT COUNT(*) FROM demandes_reinitialisation WHERE statut = ?",
+        (STATUT_DEMANDE_EN_ATTENTE,),
+    ).fetchone()[0]
+    if close:
+        conn.close()
+    return total
+
+
+def marquer_demande_traitee(
+    demande_id: int, admin_id: int, conn: sqlite3.Connection | None = None
+) -> bool:
+    close = conn is None
+    conn = conn or get_connection()
+    cur = conn.execute(
+        """UPDATE demandes_reinitialisation
+           SET statut = ?, traitee_le = CURRENT_TIMESTAMP, traitee_par_id = ?
+           WHERE id = ? AND statut = ?""",
+        (STATUT_DEMANDE_TRAITEE, admin_id, demande_id, STATUT_DEMANDE_EN_ATTENTE),
+    )
+    conn.commit()
+    affecte = cur.rowcount > 0
+    if close:
+        conn.close()
+    return affecte

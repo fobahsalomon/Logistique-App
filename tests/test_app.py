@@ -749,3 +749,71 @@ def test_page_connexion_ne_contient_plus_de_donnees_personnelles(client_anonyme)
     assert "fobahngouansalomon" not in contenu
     assert "+225" not in contenu
     assert "administrateur de votre entreprise" in contenu
+
+
+# ------------------------------------------ demandes de réinitialisation
+
+def test_demande_reinitialisation_accessible_sans_connexion(client_anonyme):
+    rep = client_anonyme.post("/api/demande-reinitialisation", json={"username": "quelquun"})
+    assert rep.status_code == 201
+
+
+def test_demande_reinitialisation_requiert_un_identifiant(client_anonyme):
+    rep = client_anonyme.post("/api/demande-reinitialisation", json={"username": ""})
+    assert rep.status_code == 400
+
+
+def test_demande_reinitialisation_visible_par_admin(client_admin):
+    # La route est publique (accessible sans connexion) mais n'importe quel
+    # client peut l'appeler pour vérifier l'effet en base — pas besoin d'un
+    # second client "anonyme" ici (deux test_client() combinés dans un même
+    # test provoquent un conflit de contexte Flask, voir client/client_admin).
+    client_admin.post("/api/demande-reinitialisation", json={"username": "testuser"})
+
+    demandes = app_module.lister_demandes_en_attente()
+    assert any(d["username"] == "testuser" for d in demandes)
+
+    rep = client_admin.get("/admin/utilisateurs")
+    assert rep.status_code == 200
+    assert b"testuser" in rep.data
+    assert b"Demandes de r" in rep.data
+
+
+def test_admin_peut_marquer_une_demande_traitee(client_admin):
+    client_admin.post("/api/demande-reinitialisation", json={"username": "testuser"})
+    demande_id = next(d["id"] for d in app_module.lister_demandes_en_attente() if d["username"] == "testuser")
+
+    rep = client_admin.post(f"/admin/demandes-reinitialisation/{demande_id}/traiter")
+    assert rep.status_code == 200
+
+    demandes = app_module.lister_demandes_en_attente()
+    assert not any(d["id"] == demande_id for d in demandes)
+
+
+def test_agent_ne_peut_pas_traiter_une_demande(client):
+    client.post("/api/demande-reinitialisation", json={"username": "testuser"})
+    demande_id = next(d["id"] for d in app_module.lister_demandes_en_attente() if d["username"] == "testuser")
+
+    rep = client.post(f"/admin/demandes-reinitialisation/{demande_id}/traiter")
+    assert rep.status_code == 403
+
+
+def test_nav_masque_mes_proformas_pour_admin(client_admin):
+    rep = client_admin.get("/")
+    assert b"Mes proformas" not in rep.data
+
+
+def test_nav_affiche_mes_proformas_pour_agent(client):
+    rep = client.get("/")
+    assert b"Mes proformas" in rep.data
+
+
+def test_pastille_notification_visible_si_demande_en_attente(client_admin):
+    client_admin.post("/api/demande-reinitialisation", json={"username": "testuser"})
+    rep = client_admin.get("/")
+    assert b"notif-dot" in rep.data
+
+
+def test_pastille_notification_absente_sans_element_en_attente(client_admin):
+    rep = client_admin.get("/")
+    assert b"notif-dot" not in rep.data

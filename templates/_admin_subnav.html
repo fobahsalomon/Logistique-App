@@ -1,6 +1,12 @@
 <div class="admin-subnav">
-  <a href="{{ url_for('page_proformas_en_attente') }}" class="admin-subnav__link {{ 'is-active' if sub_active == 'validation' else '' }}">Validation</a>
+  <a href="{{ url_for('page_proformas_en_attente') }}" class="admin-subnav__link {{ 'is-active' if sub_active == 'validation' else '' }}">
+    Validation
+    {% if nb_proformas_en_attente > 0 %}<span class="notif-dot"></span>{% endif %}
+  </a>
   <a href="{{ url_for('page_proformas_historique') }}" class="admin-subnav__link {{ 'is-active' if sub_active == 'historique' else '' }}">Historique</a>
-  <a href="{{ url_for('page_utilisateurs') }}" class="admin-subnav__link {{ 'is-active' if sub_active == 'utilisateurs' else '' }}">Utilisateurs</a>
+  <a href="{{ url_for('page_utilisateurs') }}" class="admin-subnav__link {{ 'is-active' if sub_active == 'utilisateurs' else '' }}">
+    Utilisateurs
+    {% if nb_demandes_reinitialisation > 0 %}<span class="notif-dot"></span>{% endif %}
+  </a>
   <a href="{{ url_for('page_audit') }}" class="admin-subnav__link {{ 'is-active' if sub_active == 'audit' else '' }}">Audit</a>
 </div>
