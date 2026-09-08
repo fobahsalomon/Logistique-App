@@ -24,7 +24,7 @@ def client(tmp_path, monkeypatch):
     app_module.init_db()
     app_module.seed_trajets()
     app_module.definir_mot_de_passe("testuser", "testpass")
-    app_module.app.config.update(TESTING=True)
+    app_module.app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
     with app_module.app.test_client() as c:
         c.post("/login", data={"username": "testuser", "password": "testpass"})
         yield c
@@ -39,7 +39,7 @@ def client_anonyme(tmp_path, monkeypatch):
     app_module.init_db()
     app_module.seed_trajets()
     app_module.definir_mot_de_passe("testuser", "testpass")
-    app_module.app.config.update(TESTING=True)
+    app_module.app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
     with app_module.app.test_client() as c:
         yield c
 
@@ -56,7 +56,7 @@ def client_admin(tmp_path, monkeypatch):
     app_module.seed_trajets()
     app_module.definir_mot_de_passe("adminuser", "adminpass")
     app_module.definir_role("adminuser", "ADMIN")
-    app_module.app.config.update(TESTING=True)
+    app_module.app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
     with app_module.app.test_client() as c:
         c.post("/login", data={"username": "adminuser", "password": "adminpass"})
         yield c
@@ -817,3 +817,51 @@ def test_pastille_notification_visible_si_demande_en_attente(client_admin):
 def test_pastille_notification_absente_sans_element_en_attente(client_admin):
     rep = client_admin.get("/")
     assert b"notif-dot" not in rep.data
+
+
+# ------------------------------------------------------------------- CSRF
+
+def test_csrf_cookie_pose_sur_toute_reponse(client_anonyme):
+    rep = client_anonyme.get("/login")
+    assert "csrf_token" in rep.headers.get("Set-Cookie", "")
+
+
+def test_requete_sans_jeton_csrf_refusee(tmp_path, monkeypatch):
+    """Avec la protection CSRF réellement active (contrairement aux autres
+    fixtures qui la désactivent pour simplifier les tests fonctionnels),
+    une requête POST sans jeton doit être rejetée."""
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test_csrf.db")
+    app_module.app.secret_key = "cle-de-test-csrf"
+    app_module.init_db()
+    app_module.definir_mot_de_passe("csrfuser", "csrfpass")
+    app_module.app.config.update(TESTING=True, WTF_CSRF_ENABLED=True)
+    try:
+        with app_module.app.test_client() as c:
+            rep = c.post("/login", data={"username": "csrfuser", "password": "csrfpass"})
+            assert rep.status_code == 400
+    finally:
+        app_module.app.config.update(WTF_CSRF_ENABLED=False)
+
+
+def test_requete_avec_jeton_csrf_valide_acceptee(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test_csrf2.db")
+    app_module.app.secret_key = "cle-de-test-csrf2"
+    app_module.init_db()
+    app_module.definir_mot_de_passe("csrfuser2", "csrfpass2")
+    app_module.app.config.update(TESTING=True, WTF_CSRF_ENABLED=True)
+    try:
+        with app_module.app.test_client() as c:
+            page = c.get("/login")
+            # Extraction simple du jeton depuis le HTML du formulaire de login
+            m = re.search(rb'name="csrf_token" value="([^"]+)"', page.data)
+            assert m, "champ csrf_token absent du formulaire de login"
+            jeton = m.group(1).decode()
+
+            rep = c.post(
+                "/login",
+                data={"username": "csrfuser2", "password": "csrfpass2", "csrf_token": jeton},
+                follow_redirects=False,
+            )
+            assert rep.status_code == 302
+    finally:
+        app_module.app.config.update(WTF_CSRF_ENABLED=False)

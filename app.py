@@ -21,6 +21,8 @@ from flask_login import (
     login_user,
     logout_user,
 )
+from flask_wtf import CSRFProtect
+from flask_wtf.csrf import generate_csrf
 
 from core.db import (
     DernierAdminError,
@@ -77,6 +79,39 @@ if not _secret_key:
     )
     _secret_key = secrets_module.token_hex(32)
 app.secret_key = _secret_key
+
+# Durcissement des cookies de session : jamais transmis en JS (déjà le
+# défaut Flask), pas envoyés sur les requêtes cross-site, et HTTPS-only dès
+# que la requête l'est réellement (utile derrière un proxy TLS type Render).
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Opt-in explicite plutôt que détecté automatiquement : Render sert le site
+# en HTTPS mais l'app tourne derrière un proxy en HTTP interne, donc
+# request.is_secure ne reflète pas la connexion réelle du visiteur sans
+# configuration supplémentaire (ProxyFix). Définir FORCE_SECURE_COOKIES=1
+# une fois le domaine de prod confirmé en HTTPS pour durcir le cookie de
+# session (sinon il resterait envoyable en clair). Laisser à False en
+# local — un cookie Secure n'est jamais transmis sur http://localhost.
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FORCE_SECURE_COOKIES", "").lower() in ("1", "true", "yes")
+
+csrf = CSRFProtect(app)
+
+
+@app.after_request
+def _exposer_jeton_csrf(response):
+    """Rend le jeton CSRF lisible en JS via un cookie (non httponly) — voir
+    static/js/csrf.js, qui l'attache automatiquement en en-tête X-CSRFToken
+    sur chaque requête fetch() non-GET, sans avoir à modifier individuellement
+    chaque appel POST/PUT/DELETE de l'application."""
+    if request.endpoint != "static":
+        response.set_cookie(
+            "csrf_token",
+            generate_csrf(),
+            samesite="Lax",
+            secure=request.is_secure,
+            httponly=False,
+        )
+    return response
 
 
 def _bootstrap_comptes_env() -> None:
@@ -694,6 +729,8 @@ def api_reinitialiser_mot_de_passe(user_id: int):
     nouveau_mdp = (payload.get("password") or "").strip()
     if not nouveau_mdp:
         return jsonify({"erreur": "Nouveau mot de passe requis."}), 400
+    if len(nouveau_mdp) < 8:
+        return jsonify({"erreur": "Le mot de passe doit contenir au moins 8 caractères."}), 400
     row = obtenir_utilisateur_par_id(user_id)
     if row is None:
         return jsonify({"erreur": "Utilisateur introuvable."}), 404
@@ -761,4 +798,10 @@ def api_changer_mon_mot_de_passe():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=int(os.environ.get("PORT", 5000)))
+    # debug=True active le débogueur interactif Werkzeug (exécution de code
+    # arbitraire depuis le navigateur sur une exception) — jamais par défaut,
+    # à activer explicitement en local via FLASK_DEBUG=1. En production, ce
+    # bloc n'est de toute façon jamais atteint (gunicorn importe l'objet
+    # app directement, voir Procfile / render.yaml).
+    debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
+    app.run(debug=debug, port=int(os.environ.get("PORT", 5000)))
