@@ -3,6 +3,7 @@
 import re
 import sqlite3
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -62,6 +63,57 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
             username TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    # Migration : colonne role ajoutée après coup, absente des DB existantes.
+    colonnes_utilisateurs = {
+        row[1] for row in conn.execute("PRAGMA table_info(utilisateurs)").fetchall()
+    }
+    if "role" not in colonnes_utilisateurs:
+        conn.execute(
+            "ALTER TABLE utilisateurs ADD COLUMN role TEXT NOT NULL DEFAULT 'AGENT'"
+        )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS proformas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero_proforma TEXT UNIQUE,
+            statut TEXT NOT NULL DEFAULT 'EN_ATTENTE_VALIDATION',
+            agent_id INTEGER NOT NULL REFERENCES utilisateurs(id),
+            client_nom TEXT,
+            responsable_flotte TEXT,
+            origine TEXT,
+            destination TEXT,
+            date_debut TEXT,
+            date_fin TEXT,
+            devis_input_json TEXT NOT NULL,
+            devis_result_json TEXT NOT NULL,
+            emis_le TEXT NOT NULL,
+            valide_le TEXT,
+            valide_par_id INTEGER REFERENCES utilisateurs(id),
+            motif_rejet TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS proforma_compteurs (
+            jour TEXT PRIMARY KEY,
+            dernier_numero INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES utilisateurs(id),
+            action TEXT NOT NULL,
+            details TEXT,
+            ip_address TEXT,
+            timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
@@ -295,11 +347,19 @@ def inserer_lieu(
 
 # ------------------------------------------------------------- utilisateurs
 
+ROLES_VALIDES = {"AGENT", "ADMIN"}
+
+
 def creer_utilisateur(
-    username: str, password: str, conn: sqlite3.Connection | None = None
+    username: str,
+    password: str,
+    role: str = "AGENT",
+    conn: sqlite3.Connection | None = None,
 ) -> int | None:
     """Crée un compte (mot de passe haché). Idempotent : si le nom d'utilisateur
     existe déjà, ne fait rien et renvoie son id existant."""
+    if role not in ROLES_VALIDES:
+        raise ValueError(f"Rôle invalide : {role!r}")
     close = conn is None
     conn = conn or get_connection()
     existant = conn.execute(
@@ -310,14 +370,43 @@ def creer_utilisateur(
             conn.close()
         return existant["id"]
     cur = conn.execute(
-        "INSERT INTO utilisateurs (username, password_hash) VALUES (?, ?)",
-        (username, generate_password_hash(password)),
+        "INSERT INTO utilisateurs (username, password_hash, role) VALUES (?, ?, ?)",
+        (username, generate_password_hash(password), role),
     )
     conn.commit()
     user_id = cur.lastrowid
     if close:
         conn.close()
     return user_id
+
+
+def definir_role(
+    username: str, role: str, conn: sqlite3.Connection | None = None
+) -> bool:
+    """Change le rôle d'un utilisateur existant. Renvoie True s'il a été trouvé."""
+    if role not in ROLES_VALIDES:
+        raise ValueError(f"Rôle invalide : {role!r}")
+    close = conn is None
+    conn = conn or get_connection()
+    cur = conn.execute(
+        "UPDATE utilisateurs SET role = ? WHERE username = ?", (role, username)
+    )
+    conn.commit()
+    affecte = cur.rowcount > 0
+    if close:
+        conn.close()
+    return affecte
+
+
+def lister_utilisateurs(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    close = conn is None
+    conn = conn or get_connection()
+    rows = conn.execute(
+        "SELECT id, username, role, created_at FROM utilisateurs ORDER BY username"
+    ).fetchall()
+    if close:
+        conn.close()
+    return rows
 
 
 def definir_mot_de_passe(
@@ -397,3 +486,263 @@ def supprimer_utilisateur(username: str, conn: sqlite3.Connection | None = None)
     if close:
         conn.close()
     return supprime
+
+
+# --------------------------------------------------------------- proformas
+
+STATUT_EN_ATTENTE = "EN_ATTENTE_VALIDATION"
+STATUT_VALIDE = "VALIDE"
+STATUT_REJETE = "REJETE"
+
+
+def creer_proforma(
+    agent_id: int,
+    devis_input_json: str,
+    devis_result_json: str,
+    emis_le: str,
+    origine: str | None = None,
+    destination: str | None = None,
+    client_nom: str | None = None,
+    responsable_flotte: str | None = None,
+    date_debut: str | None = None,
+    date_fin: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> int:
+    close = conn is None
+    conn = conn or get_connection()
+    cur = conn.execute(
+        """INSERT INTO proformas
+           (agent_id, client_nom, responsable_flotte, origine, destination,
+            date_debut, date_fin, devis_input_json, devis_result_json, emis_le)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            agent_id,
+            client_nom,
+            responsable_flotte,
+            origine,
+            destination,
+            date_debut,
+            date_fin,
+            devis_input_json,
+            devis_result_json,
+            emis_le,
+        ),
+    )
+    conn.commit()
+    proforma_id = cur.lastrowid
+    if close:
+        conn.close()
+    return proforma_id
+
+
+def obtenir_proforma_par_id(
+    proforma_id: int, conn: sqlite3.Connection | None = None
+) -> sqlite3.Row | None:
+    close = conn is None
+    conn = conn or get_connection()
+    row = conn.execute("SELECT * FROM proformas WHERE id = ?", (proforma_id,)).fetchone()
+    if close:
+        conn.close()
+    return row
+
+
+def lister_proformas_en_attente(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    close = conn is None
+    conn = conn or get_connection()
+    rows = conn.execute(
+        """SELECT proformas.*, utilisateurs.username AS agent_username
+           FROM proformas
+           JOIN utilisateurs ON proformas.agent_id = utilisateurs.id
+           WHERE proformas.statut = ?
+           ORDER BY proformas.created_at""",
+        (STATUT_EN_ATTENTE,),
+    ).fetchall()
+    if close:
+        conn.close()
+    return rows
+
+
+def prochain_numero_proforma(jour: str, conn: sqlite3.Connection) -> int:
+    """Incrémente et renvoie le compteur séquentiel du jour donné ('DDMMYY').
+
+    Doit être appelée avec une connexion partagée par l'appelant (pas de
+    commit/close ici) afin que l'incrémentation et l'usage du numéro fassent
+    partie de la même transaction atomique — voir valider_proforma."""
+    conn.execute(
+        "INSERT OR IGNORE INTO proforma_compteurs (jour, dernier_numero) VALUES (?, 0)",
+        (jour,),
+    )
+    conn.execute(
+        "UPDATE proforma_compteurs SET dernier_numero = dernier_numero + 1 WHERE jour = ?",
+        (jour,),
+    )
+    row = conn.execute(
+        "SELECT dernier_numero FROM proforma_compteurs WHERE jour = ?", (jour,)
+    ).fetchone()
+    return row["dernier_numero"]
+
+
+def valider_proforma(
+    proforma_id: int,
+    admin_id: int,
+    jour: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> str | None:
+    """Valide une proforma en attente et lui attribue un numéro PRO-DDMMYY-NNN.
+
+    Renvoie le numéro attribué, ou None si la proforma n'était plus en
+    attente (déjà validée/rejetée par ailleurs — évite une double validation
+    concurrente)."""
+    jour = jour or datetime.now().strftime("%d%m%y")
+    close = conn is None
+    conn = conn or get_connection()
+    sequence = prochain_numero_proforma(jour, conn)
+    numero = f"PRO-{jour}-{sequence:03d}"
+    valide_le = datetime.now().isoformat(timespec="seconds")
+    cur = conn.execute(
+        """UPDATE proformas
+           SET statut = ?, numero_proforma = ?, valide_le = ?, valide_par_id = ?
+           WHERE id = ? AND statut = ?""",
+        (STATUT_VALIDE, numero, valide_le, admin_id, proforma_id, STATUT_EN_ATTENTE),
+    )
+    if cur.rowcount == 0:
+        conn.rollback()
+        if close:
+            conn.close()
+        return None
+    conn.commit()
+    if close:
+        conn.close()
+    return numero
+
+
+def rejeter_proforma(
+    proforma_id: int,
+    admin_id: int,
+    motif: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> bool:
+    close = conn is None
+    conn = conn or get_connection()
+    cur = conn.execute(
+        """UPDATE proformas
+           SET statut = ?, motif_rejet = ?, valide_par_id = ?, valide_le = ?
+           WHERE id = ? AND statut = ?""",
+        (
+            STATUT_REJETE,
+            motif,
+            admin_id,
+            datetime.now().isoformat(timespec="seconds"),
+            proforma_id,
+            STATUT_EN_ATTENTE,
+        ),
+    )
+    conn.commit()
+    affecte = cur.rowcount > 0
+    if close:
+        conn.close()
+    return affecte
+
+
+def lister_proformas_historique(
+    numero: str | None = None,
+    date_debut: str | None = None,
+    date_fin: str | None = None,
+    agent_username: str | None = None,
+    client_nom: str | None = None,
+    trajet: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> list[sqlite3.Row]:
+    """Historique filtrable des proformas validées."""
+    close = conn is None
+    conn = conn or get_connection()
+
+    conditions = ["proformas.statut = ?"]
+    params: list = [STATUT_VALIDE]
+
+    if numero:
+        conditions.append("proformas.numero_proforma LIKE ?")
+        params.append(f"%{numero}%")
+    if date_debut:
+        conditions.append("proformas.valide_le >= ?")
+        params.append(date_debut)
+    if date_fin:
+        conditions.append("proformas.valide_le <= ?")
+        params.append(date_fin + "T23:59:59")
+    if agent_username:
+        conditions.append("utilisateurs.username LIKE ?")
+        params.append(f"%{agent_username}%")
+    if client_nom:
+        conditions.append("proformas.client_nom LIKE ?")
+        params.append(f"%{client_nom}%")
+    if trajet:
+        conditions.append("(proformas.origine LIKE ? OR proformas.destination LIKE ?)")
+        params.extend([f"%{trajet}%", f"%{trajet}%"])
+
+    sql = f"""
+        SELECT proformas.*, utilisateurs.username AS agent_username
+        FROM proformas
+        JOIN utilisateurs ON proformas.agent_id = utilisateurs.id
+        WHERE {' AND '.join(conditions)}
+        ORDER BY proformas.valide_le DESC
+    """
+    rows = conn.execute(sql, params).fetchall()
+    if close:
+        conn.close()
+    return rows
+
+
+# -------------------------------------------------------------- audit_logs
+
+def enregistrer_audit(
+    user_id: int | None,
+    action: str,
+    details: str | None = None,
+    ip_address: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> int:
+    close = conn is None
+    conn = conn or get_connection()
+    cur = conn.execute(
+        "INSERT INTO audit_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)",
+        (user_id, action, details, ip_address),
+    )
+    conn.commit()
+    audit_id = cur.lastrowid
+    if close:
+        conn.close()
+    return audit_id
+
+
+def lister_audit_logs(
+    limit: int = 200,
+    user_id: int | None = None,
+    action: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> list[sqlite3.Row]:
+    close = conn is None
+    conn = conn or get_connection()
+
+    conditions = []
+    params: list = []
+    if user_id is not None:
+        conditions.append("audit_logs.user_id = ?")
+        params.append(user_id)
+    if action:
+        conditions.append("audit_logs.action = ?")
+        params.append(action)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.append(limit)
+
+    rows = conn.execute(
+        f"""SELECT audit_logs.*, utilisateurs.username
+            FROM audit_logs
+            LEFT JOIN utilisateurs ON audit_logs.user_id = utilisateurs.id
+            {where}
+            ORDER BY audit_logs.timestamp DESC
+            LIMIT ?""",
+        params,
+    ).fetchall()
+    if close:
+        conn.close()
+    return rows
