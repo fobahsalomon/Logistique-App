@@ -49,5 +49,5 @@ node_modules/
 # Base de données SQLite locale/prod : générée automatiquement au démarrage
 # par core/db.py:init_db(), ne doit jamais être versionnée (évite d'écraser
 # les données de prod ou de créer des conflits de merge sur un fichier binaire)
-data/*.db
-data/*.sqlite*
+data/db/*.db
+data/db/*.sqlite*

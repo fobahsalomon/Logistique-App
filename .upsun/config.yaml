@@ -1,0 +1,26 @@
+applications:
+  app:
+    source:
+      root: "/"
+    type: "python:3.11"
+    disk: 512
+    hooks:
+      build: |
+        set -e
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    mounts:
+      "data/db":
+        source: storage
+        source_path: "data/db"
+    web:
+      commands:
+        start: "gunicorn --bind 0.0.0.0:$PORT app:app"
+
+routes:
+  "https://{default}/":
+    type: redirect
+    to: "https://www.{default}/"
+  "https://www.{default}/":
+    type: upstream
+    upstream: "app:http"
