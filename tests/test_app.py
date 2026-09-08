@@ -616,3 +616,59 @@ def test_ajout_colonne_role_sur_db_existante(tmp_path):
     role = conn.execute("SELECT role FROM utilisateurs WHERE username = 'ancien'").fetchone()[0]
     assert role == "AGENT"
     conn.close()
+
+
+# --------------------------------------------------- protection dernier admin
+
+def test_dernier_admin_ne_peut_pas_se_retrograder(tmp_path, monkeypatch):
+    import core.db as db
+
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
+    db.init_db()
+    db.creer_utilisateur("seul-admin", "x", role="ADMIN")
+
+    with pytest.raises(db.DernierAdminError):
+        db.definir_role("seul-admin", "AGENT")
+
+    row = db.verifier_mot_de_passe("seul-admin", "x")
+    assert row["role"] == "ADMIN"
+
+
+def test_retrogradation_possible_si_plusieurs_admins(tmp_path, monkeypatch):
+    import core.db as db
+
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
+    db.init_db()
+    db.creer_utilisateur("admin1", "x", role="ADMIN")
+    db.creer_utilisateur("admin2", "x", role="ADMIN")
+
+    assert db.definir_role("admin1", "AGENT") is True
+
+    row = db.verifier_mot_de_passe("admin1", "x")
+    assert row["role"] == "AGENT"
+
+
+def test_dernier_admin_ne_peut_pas_etre_supprime(tmp_path, monkeypatch):
+    import core.db as db
+
+    monkeypatch.setattr("core.db.DB_PATH", tmp_path / "test.db")
+    db.init_db()
+    db.creer_utilisateur("seul-admin", "x", role="ADMIN")
+
+    with pytest.raises(db.DernierAdminError):
+        db.supprimer_utilisateur("seul-admin")
+
+    assert db.verifier_mot_de_passe("seul-admin", "x") is not None
+
+
+def test_api_refuse_de_retrograder_le_dernier_admin(client_admin):
+    users = app_module.lister_utilisateurs()
+    admin_id = next(u["id"] for u in users if u["username"] == "adminuser")
+
+    rep = client_admin.post(
+        f"/admin/utilisateurs/{admin_id}/role", json={"role": "AGENT"}
+    )
+    assert rep.status_code == 409
+
+    row = app_module.obtenir_utilisateur_par_id(admin_id)
+    assert row["role"] == "ADMIN"

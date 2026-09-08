@@ -23,6 +23,7 @@ from flask_login import (
 )
 
 from core.db import (
+    DernierAdminError,
     definir_mot_de_passe,
     definir_role,
     enregistrer_audit,
@@ -662,7 +663,10 @@ def api_changer_role(user_id: int):
     row = obtenir_utilisateur_par_id(user_id)
     if row is None:
         return jsonify({"erreur": "Utilisateur introuvable."}), 404
-    definir_role(row["username"], role)
+    try:
+        definir_role(row["username"], role)
+    except DernierAdminError as exc:
+        return jsonify({"erreur": str(exc)}), 409
     enregistrer_audit(current_user.id, "ROLE_MODIFIE", f"{row['username']} -> {role}", request.remote_addr)
     return jsonify({"ok": True})
 

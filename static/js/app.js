@@ -1041,7 +1041,7 @@
 
     liste.innerHTML = suggestions.map((t) => `
       <button type="button" class="standard-item" data-id="${t.id}">
-        ${t.origine} → ${t.destination} · ${t.distance_km} km
+        ${t.origine} → ${t.destination} · ${t.distance_km != null ? `${t.distance_km} km` : "distance indisponible"}
       </button>
     `).join("");
 

@@ -390,14 +390,49 @@ def creer_utilisateur(
     return user_id
 
 
+class DernierAdminError(ValueError):
+    """Levée quand une opération rétrograderait ou supprimerait le dernier ADMIN,
+    ce qui verrouillerait le panneau d'administration (plus personne ne pourrait
+    promouvoir un nouvel admin)."""
+
+
+def compter_admins(conn: sqlite3.Connection | None = None) -> int:
+    close = conn is None
+    conn = conn or get_connection()
+    total = conn.execute(
+        "SELECT COUNT(*) FROM utilisateurs WHERE role = 'ADMIN'"
+    ).fetchone()[0]
+    if close:
+        conn.close()
+    return total
+
+
 def definir_role(
     username: str, role: str, conn: sqlite3.Connection | None = None
 ) -> bool:
-    """Change le rôle d'un utilisateur existant. Renvoie True s'il a été trouvé."""
+    """Change le rôle d'un utilisateur existant. Renvoie True s'il a été trouvé.
+
+    Refuse (DernierAdminError) de rétrograder le dernier ADMIN restant : si
+    cette opération passait, plus personne ne pourrait accéder au panneau
+    d'administration pour promouvoir un nouvel admin — l'application se
+    verrouillerait."""
     if role not in ROLES_VALIDES:
         raise ValueError(f"Rôle invalide : {role!r}")
     close = conn is None
     conn = conn or get_connection()
+
+    if role != "ADMIN":
+        row = conn.execute(
+            "SELECT role FROM utilisateurs WHERE username = ?", (username,)
+        ).fetchone()
+        if row is not None and row["role"] == "ADMIN" and compter_admins(conn) <= 1:
+            if close:
+                conn.close()
+            raise DernierAdminError(
+                "Impossible de rétrograder le dernier administrateur : "
+                "l'application n'aurait plus aucun compte admin."
+            )
+
     cur = conn.execute(
         "UPDATE utilisateurs SET role = ? WHERE username = ?", (role, username)
     )
@@ -487,9 +522,24 @@ def aucun_utilisateur(conn: sqlite3.Connection | None = None) -> bool:
 
 
 def supprimer_utilisateur(username: str, conn: sqlite3.Connection | None = None) -> bool:
-    """Supprime un compte par son nom d'utilisateur. Renvoie True s'il existait."""
+    """Supprime un compte par son nom d'utilisateur. Renvoie True s'il existait.
+
+    Refuse (DernierAdminError) de supprimer le dernier ADMIN, pour la même
+    raison que definir_role : l'application se verrouillerait."""
     close = conn is None
     conn = conn or get_connection()
+
+    row = conn.execute(
+        "SELECT role FROM utilisateurs WHERE username = ?", (username,)
+    ).fetchone()
+    if row is not None and row["role"] == "ADMIN" and compter_admins(conn) <= 1:
+        if close:
+            conn.close()
+        raise DernierAdminError(
+            "Impossible de supprimer le dernier administrateur : "
+            "l'application n'aurait plus aucun compte admin."
+        )
+
     cur = conn.execute("DELETE FROM utilisateurs WHERE username = ?", (username,))
     conn.commit()
     supprime = cur.rowcount > 0

@@ -234,6 +234,8 @@ input:focus { border-color: var(--yellow); }
   gap: 10px;
   transition: 0.2s ease;
   cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .comparison-card:hover {
@@ -287,6 +289,7 @@ input:focus { border-color: var(--yellow); }
 .comparison-kpis {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .kpi-mini {
@@ -294,6 +297,8 @@ input:focus { border-color: var(--yellow); }
   background: rgba(15, 23, 42, 0.7);
   border: 1px solid rgba(148, 163, 184, 0.15);
   padding: 10px 12px;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .kpi-mini span {
@@ -311,6 +316,12 @@ input:focus { border-color: var(--yellow); }
   color: var(--yellow);
   font-weight: 800;
   display: block;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+@media (max-width: 380px) {
+  .kpi-mini strong { font-size: 18px; }
 }
 
 .compare-select {

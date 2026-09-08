@@ -42,7 +42,7 @@
               <tr id="user-{{ u['id'] }}">
                 <td>{{ u['username'] }}</td>
                 <td>
-                  <select onchange="changerRole({{ u['id'] }}, this.value)">
+                  <select onchange="changerRole({{ u['id'] }}, this.value, this)">
                     <option value="AGENT" {% if u['role'] == 'AGENT' %}selected{% endif %}>AGENT</option>
                     <option value="ADMIN" {% if u['role'] == 'ADMIN' %}selected{% endif %}>ADMIN</option>
                   </select>
@@ -58,14 +58,18 @@
   </main>
 
   <script>
-    async function changerRole(id, role) {
+    async function changerRole(id, role, selectEl) {
+      const ancienneValeur = role === "ADMIN" ? "AGENT" : "ADMIN";
       const resp = await fetch(`/admin/utilisateurs/${id}/role`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
       });
       const data = await resp.json();
-      if (!resp.ok) alert(data.erreur || "Erreur.");
+      if (!resp.ok) {
+        alert(data.erreur || "Erreur.");
+        if (selectEl) selectEl.value = ancienneValeur;
+      }
     }
 
     async function reinitialiserMotDePasse(id, username) {
